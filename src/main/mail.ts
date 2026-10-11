@@ -837,6 +837,19 @@ export interface ProposalStore {
   recentSends(agentId: string, mailbox: string, limit?: number): SendRecord[];
 }
 
+/**
+ * Ties a proposal to the task it is about (issue #105). Main supplies it: it
+ * reads the task cards and the trigger ledger, which this file does not know.
+ */
+export interface TaskLinker {
+  /** The ids a proposal for this task carries, or undefined when no such task
+   *  exists (so a made-up id never links to anything). `correlationId` comes
+   *  from the task's webhook trigger row, when it has one. */
+  resolve(taskId: string): { taskId: string; correlationId?: string } | undefined;
+  /** Records the proposal on the task's trigger row. */
+  attach(taskId: string, proposalId: string): void;
+}
+
 /** The separate check that an email fits a standing approval. Null when it
  *  could not run, which counts as not fitting. */
 export type StandingFitCheck = (kind: string, email: StandingCheckEmail) => Promise<{ fits: true } | { fits: false; reason: string } | null>;
@@ -871,7 +884,7 @@ function ref(v: unknown): MailRef | undefined {
   return typeof o.mailbox === 'string' && (typeof o.id === 'string' || typeof o.id === 'number') ? { mailbox: o.mailbox, id: String(o.id) } : undefined;
 }
 
-type MailRequestDeps = Pick<MailDeps, 'getConfig' | 'log'> & { audit?: (event: Record<string, unknown>) => void; proposals?: ProposalStore; fitCheck?: StandingFitCheck; present?: (agentId: string) => boolean };
+type MailRequestDeps = Pick<MailDeps, 'getConfig' | 'log'> & { audit?: (event: Record<string, unknown>) => void; proposals?: ProposalStore; fitCheck?: StandingFitCheck; present?: (agentId: string) => boolean; tasks?: TaskLinker };
 
 /**
  * One md-mail tool call, already authenticated by the broker token (so `agentId`
@@ -1165,8 +1178,16 @@ async function runMailRequest(
       if (!deps.proposals) return { status: 503, body: { error: 'Approvals are not available right now. Tell Michael.' } };
       if (!input.body.trim()) return { status: 400, body: { error: 'propose needs a "body".' } };
       const offer = str(body.offer_standing, STANDING_KIND_MAX)?.replace(/\s+/g, ' ').trim();
-      const p = deps.proposals.file({ agentId, mailbox: mailbox!, to: input.to, cc: input.cc, subject: input.subject, body: input.body, replyTo: input.replyTo, forward: input.forward, attachFrom: input.attachFrom, ...(input.thread ? { thread: input.thread } : {}), ...(offer ? { offerStanding: offer } : {}) });
-      return { status: 200, body: { proposal: p.id, state: 'waiting for the owner on Ask me', ...(p.replaces ? { replaced: p.replaces, note: `This replaces your earlier proposal ${p.replaces} for the same email; that id no longer works.` } : {}), next: 'Nothing is sent yet. You will get a message when the owner decides: approved (then call send with this proposal id), changes asked, or not sent. Do not send it another way.' } };
+      // The task this email is for (issue #105): linked only when that task
+      // exists, so a proposal with no task, or a made-up id, carries no task id.
+      const taskArg = str(body.task, 100);
+      let link: ReturnType<TaskLinker['resolve']>;
+      try { link = taskArg ? deps.tasks?.resolve(taskArg) : undefined; } catch (e) { console.error('[mail] task link lookup:', e); }
+      const p = deps.proposals.file({ agentId, mailbox: mailbox!, to: input.to, cc: input.cc, subject: input.subject, body: input.body, replyTo: input.replyTo, forward: input.forward, attachFrom: input.attachFrom, ...(input.thread ? { thread: input.thread } : {}), ...(offer ? { offerStanding: offer } : {}), ...(link ? { taskId: link.taskId, ...(link.correlationId ? { correlationId: link.correlationId } : {}) } : {}) });
+      if (link) {
+        try { deps.tasks!.attach(link.taskId, p.id); } catch (e) { console.error('[mail] task link not kept:', p.id, e); }
+      }
+      return { status: 200, body: { proposal: p.id, state: 'waiting for the owner on Ask me', ...(link ? { task: link.taskId } : {}), ...(taskArg && !link ? { task_note: 'No task with that id exists, so this proposal is not linked to one.' } : {}), ...(p.replaces ? { replaced: p.replaces, note: `This replaces your earlier proposal ${p.replaces} for the same email; that id no longer works.` } : {}), next: 'Nothing is sent yet. You will get a message when the owner decides: approved (then call send with this proposal id), changes asked, or not sent. Do not send it another way.' } };
     }
     const out = await svc.send(agentId, mailbox!, input, () => {
       const a = mailAccess(deps.getConfig(), agentId, mailbox, 'send', undefined, { present: deps.present });

@@ -93,7 +93,7 @@ const TOOLS = [
   {
     name: 'propose',
     description: 'Put an email on Ask me for the owner to approve (Send on approval only; Can send and Draft only refuse it). Nothing is sent. The owner approves it (maybe after editing it), asks for changes, or chooses not to send it, and you get a message either way. When it is approved, call send with its proposal id. Learn from their edits and notes for next time.',
-    inputSchema: { type: 'object', properties: { ...compose, offer_standing: { type: 'string', description: 'Optional. Only when your memory notes show the owner approving this kind of email unchanged again and again: one narrow plain line naming the kind, for example "order status replies to existing customers, no prices or dates". The owner may tick it to let you send that kind without approval from now on.' } }, required: ['mailbox', 'to', 'subject', 'body'] }
+    inputSchema: { type: 'object', properties: { ...compose, offer_standing: { type: 'string', description: 'Optional. Only when your memory notes show the owner approving this kind of email unchanged again and again: one narrow plain line naming the kind, for example "order status replies to existing customers, no prices or dates". The owner may tick it to let you send that kind without approval from now on.' }, task: { type: 'string', description: 'Optional. The id of the task card this email is for (for example the webhook card you were given), so the owner can see the request, this approval and the sent email together. Leave it out when there is no task.' } }, required: ['mailbox', 'to', 'subject', 'body'] }
   },
   {
     name: 'send',

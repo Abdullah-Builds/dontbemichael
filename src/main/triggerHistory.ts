@@ -37,7 +37,7 @@ export type TriggerHistoryInput =
  *  an entry's source, direction and body are the record of what happened and are
  *  not rewritable — the mutable part is the operator's verdict on it. */
 export type TriggerHistoryPatch = Partial<
-  Pick<TriggerHistoryEntry, 'decision' | 'taskId' | 'correlationId' | 'title'>
+  Pick<TriggerHistoryEntry, 'decision' | 'taskId' | 'correlationId' | 'title' | 'proposalId'>
 >;
 
 function historyPath(): string {
@@ -106,6 +106,7 @@ export function appendTriggerHistory(input: TriggerHistoryInput): TriggerHistory
     decision: input.decision,
     correlationId: input.correlationId,
     taskId: input.taskId,
+    proposalId: input.proposalId,
     at: input.at ?? Date.now()
   };
   writeAll([entry, ...readAll()].slice(0, TRIGGER_HISTORY_LIMIT));
@@ -136,6 +137,7 @@ export function updateTriggerHistory(
   if (patch.taskId !== undefined) next.taskId = patch.taskId;
   if (patch.correlationId !== undefined) next.correlationId = patch.correlationId;
   if (patch.title !== undefined) next.title = patch.title;
+  if (patch.proposalId !== undefined) next.proposalId = patch.proposalId;
   all[i] = next;
   writeAll(all);
   return next;

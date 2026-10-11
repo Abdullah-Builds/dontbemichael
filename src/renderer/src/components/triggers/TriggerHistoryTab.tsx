@@ -4,6 +4,7 @@ import type { TFunction } from 'i18next';
 import { PixelButton } from '../PixelButton';
 import { useStore } from '@/store/store';
 import type { TriggerHistoryEntry } from '@shared/triggers';
+import { proposalForRows, type LinkedProposal } from '@shared/mailProposals';
 import { useRtl } from '@/i18n/useDirection';
 
 /**
@@ -37,6 +38,8 @@ import { useRtl } from '@/i18n/useDirection';
 interface TriggerHistoryApi {
   listTriggerHistory?: () => Promise<TriggerHistoryEntry[]>;
   onTriggerHistoryUpdated?: (cb: () => void) => () => void;
+  listLinkedMailProposals?: () => Promise<LinkedProposal[]>;
+  onMailProposalsUpdated?: (cb: () => void) => () => void;
   decideTriggerHistory?: (input: {
     id: string;
     decision: 'approved' | 'rejected';
@@ -238,13 +241,16 @@ function ExchangeCard({
   expanded,
   toggle,
   busy,
-  onDecide
+  onDecide,
+  approval
 }: {
   ex: Exchange;
   expanded: Record<string, boolean>;
   toggle: (id: string) => void;
   busy: Record<string, boolean>;
   onDecide: (id: string, decision: 'approved' | 'rejected') => void;
+  /** The mail approval tied to this exchange's task, if any. */
+  approval: LinkedProposal | null;
 }) {
   const { t } = useTranslation();
   const godName = useStore((s) => s.agents.find((a) => a.isGod)?.name) ?? 'the orchestrator';
@@ -341,6 +347,19 @@ function ExchangeCard({
       {taskId && (
         <div style={{ ...tinyCaps, ...ellipsis }} title={taskId}>{t('triggerHistory.task', { id: taskId })}</div>
       )}
+
+      {/* The approval an agent put up for this task, and the Message-ID once the
+          send is confirmed. A task with no proposal shows neither line. */}
+      {approval && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+          <div style={{ ...tinyCaps, ...ellipsis }} title={approval.id}>
+            {t('triggerHistory.approvalLine', { id: approval.id, state: t(`triggerHistory.proposalState.${approval.state}`) })}
+          </div>
+          {approval.messageId && (
+            <div style={{ ...tinyCaps, ...ellipsis }} title={approval.messageId}>{t('triggerHistory.messageId', { id: approval.messageId })}</div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -395,6 +414,22 @@ export function TriggerHistoryTab() {
     const off = api().onTriggerHistoryUpdated?.(load);
     return () => { if (typeof off === 'function') off(); };
   }, [load]);
+
+  // The mail approvals tied to a task, re-read whenever a proposal changes (an
+  // approval, a send), so the Message-ID appears once the send is confirmed.
+  const [linked, setLinked] = useState<LinkedProposal[]>([]);
+  const loadLinked = useCallback(() => {
+    const list = api().listLinkedMailProposals;
+    if (!list) return;
+    list()
+      .then((rows) => setLinked(Array.isArray(rows) ? rows : []))
+      .catch(() => { /* main not ready; the update event will bring us back */ });
+  }, []);
+  useEffect(() => {
+    loadLinked();
+    const off = api().onMailProposalsUpdated?.(loadLinked);
+    return () => { if (typeof off === 'function') off(); };
+  }, [loadLinked]);
 
   const toggle = useCallback((id: string) => {
     setExpanded((e) => ({ ...e, [id]: !e[id] }));
@@ -536,6 +571,7 @@ export function TriggerHistoryTab() {
               toggle={toggle}
               busy={busy}
               onDecide={decide}
+              approval={proposalForRows(ex.msgs, linked)}
             />
           ))
         )}

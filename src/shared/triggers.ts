@@ -246,6 +246,9 @@ export interface TriggerHistoryEntry {
   decision?: 'auto-allowed' | 'pending' | 'approved' | 'rejected';
   correlationId?: string;
   taskId?: string;
+  /** The mail approval an agent put up for this row's task (issue #105): the
+   *  `MailProposal.id`, set when the proposal is filed against `taskId`. */
+  proposalId?: string;
   at: number;
 }
 

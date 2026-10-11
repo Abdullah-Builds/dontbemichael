@@ -275,6 +275,9 @@ export class MailApprovals implements ProposalStore {
 
   get(id: string): MailProposal | undefined { return this.read().find((p) => p.id === id); }
 
+  /** Every kept proposal in any state (the Triggers tab reads the ones tied to a task). */
+  all(): MailProposal[] { return this.read(); }
+
   file(p: Omit<MailProposal, 'id' | 'createdAt' | 'state'>): MailProposal {
     const list = this.read();
     const draft: MailProposal = { ...p, id: `mp_${this.now().toString(36)}_${randomBytes(3).toString('hex')}`, createdAt: this.now(), state: 'waiting' };

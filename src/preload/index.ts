@@ -3,7 +3,7 @@ import type { OfficeRecord } from '../shared/officeRecord';
 import type { MailboxRecord, AgentCapabilities, MailProvider, MailServer } from '../shared/mailboxes';
 import type { ClaudeConnectorsState } from '../shared/claudeConnectors';
 import type { ScheduledMission, ScheduleRequest } from '../shared/missions';
-import type { MailProposal, ProposalDecision, StandingApproval } from '../shared/mailProposals';
+import type { LinkedProposal, MailProposal, ProposalDecision, StandingApproval } from '../shared/mailProposals';
 import type { OwnerDock } from '../shared/ownerRequests';
 import type { AgentProvider } from '../shared/agentProvider';
 import type { EngineSetupStatus } from '../shared/engineSetup';
@@ -247,7 +247,7 @@ export interface PtyExit { exitCode: number; signal?: number | undefined }
 
 /** A recurring schedule; the type lives in shared/missions.ts. */
 export type { ScheduledMission, ScheduleRequest } from '../shared/missions';
-export type { MailProposal, ProposalDecision, StandingApproval } from '../shared/mailProposals';
+export type { LinkedProposal, MailProposal, ProposalDecision, StandingApproval } from '../shared/mailProposals';
 export type { OwnerDock, DockItem, DockQuestion, DockReply } from '../shared/ownerRequests';
 
 /** Company knowledge config. Mirrors src/main/config.ts. */
@@ -1368,6 +1368,8 @@ const api = {
   ackReport: (taskId: string, index: number): Promise<{ ok: boolean }> => ipcRenderer.invoke('hive:ackReport', taskId, index),
   /** Send on approval: emails waiting for the owner on Ask me, and the owner's decision. */
   listMailProposals: (): Promise<MailProposal[]> => ipcRenderer.invoke('mailProposals:list'),
+  /** Proposals tied to a task: ids, state and, once sent, the Message-ID (no email text). */
+  listLinkedMailProposals: (): Promise<LinkedProposal[]> => ipcRenderer.invoke('mailProposals:linked'),
   decideMailProposal: (id: string, decision: ProposalDecision, edit: { subject?: string; body?: string }, note?: string, standing?: string): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('mailProposals:decide', id, decision, edit, note, standing),
   /** Standing approvals: kinds of email an agent may send without asking. */

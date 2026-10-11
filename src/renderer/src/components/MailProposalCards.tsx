@@ -80,6 +80,10 @@ function ProposalCard({ p, refresh }: { p: MailProposal; refresh: () => void }) 
         <div>{t('askMe.mailFrom', { from: isolate(from) })}</div>
         <div>{t('askMe.mailTo', { to: isolate(p.to) })}</div>
         {p.cc && <div>{t('askMe.mailCc', { cc: isolate(p.cc) })}</div>}
+        {/* The task and webhook request this email is for (issue #105), shown
+            only when the proposal has them: no task, no task line. */}
+        {p.taskId && <div>{t('askMe.mailTask', { id: isolate(p.taskId) })}</div>}
+        {p.correlationId && <div>{t('askMe.mailRequest', { id: isolate(p.correlationId) })}</div>}
       </div>
       <label style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
         <span style={label}>{t('askMe.mailSubject')}</span>

@@ -56,6 +56,50 @@ export interface MailProposal {
   cancelReason?: string;
   /** The earlier waiting card for the same email that this one replaced. */
   replaces?: string;
+  /** The task card the agent proposed this email for (issue #105). Set only when
+   *  that task exists, so a proposal with no task carries no task id. */
+  taskId?: string;
+  /** The webhook request's correlation id, copied from the trigger row of
+   *  `taskId`, so the request, this approval and the sent Message-ID read as one
+   *  stored chain. Absent when the task did not come from a webhook. */
+  correlationId?: string;
+}
+
+/**
+ * What the Triggers tab may show of a proposal that is tied to a task: ids and
+ * state only. The recipient, subject and body stay app private (D14).
+ */
+export interface LinkedProposal {
+  id: string;
+  taskId: string;
+  correlationId?: string;
+  state: ProposalState;
+  /** The sent email's Message-ID, once a send is confirmed. */
+  messageId?: string;
+}
+
+/**
+ * The proposal tied to a group of trigger rows, or null. Matched by the
+ * proposal id the app stored on the row, or failing that by the task id the
+ * proposal stored: never by subject, body or time, which would be a guess.
+ */
+export function proposalForRows(rows: Array<{ proposalId?: string; taskId?: string }>, linked: LinkedProposal[]): LinkedProposal | null {
+  const proposalId = rows.find((r) => r.proposalId)?.proposalId;
+  if (proposalId) return linked.find((p) => p.id === proposalId) ?? null;
+  const taskId = rows.find((r) => r.taskId)?.taskId;
+  return taskId ? linked.find((p) => p.taskId === taskId) ?? null : null;
+}
+
+/** The linked view of every proposal that names a task. */
+export function linkedProposals(list: MailProposal[]): LinkedProposal[] {
+  return list.filter((p): p is MailProposal & { taskId: string } => typeof p.taskId === 'string' && !!p.taskId).map((p) => ({
+    id: p.id,
+    taskId: p.taskId,
+    ...(p.correlationId ? { correlationId: p.correlationId } : {}),
+    state: p.state,
+    // A Message-ID is shown only for an email that went out.
+    ...(p.state === 'sent' && p.messageId ? { messageId: p.messageId } : {})
+  }));
 }
 
 /**

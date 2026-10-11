@@ -87,10 +87,11 @@ import { analytics, isRendererMessageSurface } from './analytics';
 import type { SpawnFailReason } from './analytics';
 import { IntegrationBroker } from './integrationBroker';
 import * as integrations from './integrations';
-import { MailService, handleMailRequest, saveMailbox, removeMailbox, setAgentCapabilities, setSendOnly, type AddMailboxInput } from './mail';
+import { MailService, handleMailRequest, saveMailbox, removeMailbox, setAgentCapabilities, setSendOnly, type AddMailboxInput, type TaskLinker } from './mail';
 import { MailApprovals } from './mailApprovals';
 import { standingFitCheck } from './standingCheck';
 import { terminalOverflowEvent } from '../shared/terminalOverflow';
+import { linkedProposals } from '../shared/mailProposals';
 import { PROVIDER_PRESETS, grantPaused, hasMailTools, mailAccess, mailboxAddress, secretRefForMailbox, sendOnlyGrant, sendingFor, sendingMode, sendingWords, type SendingMode } from '../shared/mailboxes';
 import { levelFor } from '../shared/agentDefinition';
 import { claudeBinFor, readClaudeMcpList } from './claudeMcpList';
@@ -586,6 +587,23 @@ const mailApprovals = new MailApprovals({
   canSend: (agentId, mailbox, proposalId) => memberPresent(agentId) && mailAccess(readConfig(), agentId, mailbox, 'send', proposalId, { present: memberPresent }).ok
 });
 
+/** Ties a proposal to the task card it is for (issue #105): the card must exist,
+ *  its webhook trigger row gives the correlation id, and that row learns the
+ *  proposal id, so the request, the approval and the sent Message-ID are one
+ *  stored chain instead of a guess from subject, body or time. */
+const mailTaskLinker: TaskLinker = {
+  resolve: (taskId) => {
+    const ledger = hive.tasks() as { tasks?: Array<{ id?: string }> };
+    if (!Array.isArray(ledger?.tasks) || !ledger.tasks.some((t) => t?.id === taskId)) return undefined;
+    const row = listTriggerHistory().find((e) => e.direction === 'inbound' && e.taskId === taskId);
+    return { taskId, ...(row?.correlationId ? { correlationId: row.correlationId } : {}) };
+  },
+  attach: (taskId, proposalId) => {
+    const row = listTriggerHistory().find((e) => e.direction === 'inbound' && e.taskId === taskId);
+    if (row && updateTriggerHistory(row.id, { proposalId })) notifyTriggerHistoryUpdated();
+  }
+};
+
 /** Does an email fit a standing approval: a separate quick model decides, never the agent. */
 const standingFit = standingFitCheck({
   // An empty folder only the app writes, never the office folder agents work
@@ -606,7 +624,7 @@ const standingFit = standingFitCheck({
 const integrationBroker = new IntegrationBroker({
   getRecord: integrations.getRecord,
   getSecret: integrations.getSecret,
-  mail: (agentId, op, body) => handleMailRequest(mailService, { getConfig: () => readConfig(), audit: (event) => { try { hive.appendLog(event); } catch { /* best-effort */ } }, proposals: mailApprovals, fitCheck: standingFit, present: memberPresent, log: (line) => console.log(line) }, agentId, op, body)
+  mail: (agentId, op, body) => handleMailRequest(mailService, { getConfig: () => readConfig(), audit: (event) => { try { hive.appendLog(event); } catch { /* best-effort */ } }, proposals: mailApprovals, fitCheck: standingFit, present: memberPresent, tasks: mailTaskLinker, log: (line) => console.log(line) }, agentId, op, body)
 });
 
 /** Absolute path to the bundled md-mail MCP server (same resolution as the
@@ -5761,6 +5779,9 @@ ipcMain.handle('scheduleRequests:decide', (_evt, id: unknown, approve: unknown):
 // ─── IPC: Send on approval (an agent proposed an email, the owner decides) ───
 // A member no longer on the team has no card on Ask me: nobody would send it.
 ipcMain.handle('mailProposals:list', () => mailApprovals.waiting().filter((p) => memberPresent(p.agentId)));
+/** Proposals tied to a task, as ids and state only (no recipient, subject or
+ *  body), for the Triggers tab's request ↔ approval ↔ Message-ID chain. */
+ipcMain.handle('mailProposals:linked', () => linkedProposals(mailApprovals.all()));
 ipcMain.handle('mailProposals:decide', (_evt, id: unknown, decision: unknown, edit: unknown, note: unknown, standing: unknown) => {
   if (typeof id !== 'string' || (decision !== 'approve' && decision !== 'changes' && decision !== 'decline')) return { ok: false, error: 'invalid' };
   const e = (edit && typeof edit === 'object' ? edit : {}) as { subject?: unknown; body?: unknown };
