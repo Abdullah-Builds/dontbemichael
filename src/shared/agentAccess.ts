@@ -8,7 +8,7 @@ export type AccessItem =
   /** Send only from another member's mailbox (shared-mailboxes.md, S2). */
   | { kind: 'send-only'; address: string; sending: SendingMode; paused: boolean }
   | { kind: 'connector'; key: string }
-  | { kind: 'quickbooks'; changes: boolean };
+  | { kind: 'quickbooks'; changes: boolean; approval?: boolean };
 
 /**
  * What an agent can actually use right now, for its profile's "Uses" row:
@@ -29,7 +29,7 @@ export function agentAccessSummary(cfg: MailAccessConfig & ConnectorConfig, agen
   const connectors = usableConnectors(cfg, agentId, roleReadsBooks).sort((a, b) => a.key.localeCompare(b.key));
   for (const c of connectors) {
     if (isQuickBooksKey(c.key)) {
-      items.push({ kind: 'quickbooks', changes: quickbooksCapability(cfg.agentCapabilities?.[agentId]?.quickbooks, roleReadsBooks).changes });
+      { const q = quickbooksCapability(cfg.agentCapabilities?.[agentId]?.quickbooks, roleReadsBooks); items.push({ kind: 'quickbooks', changes: q.changes, ...(q.approval ? { approval: true } : {}) }); }
     } else {
       items.push({ kind: 'connector', key: c.key });
     }
@@ -52,7 +52,7 @@ export function accessLine(items: AccessItem[]): string | null {
     // Michael's routing guess for outreach (S2): who may write as an address.
     if (i.kind === 'send-only') parts.push(`sends only from ${i.address} (Settings, Connections, Mailboxes; ${sendingWords(i.sending)}, set on their Access tab, Email${i.paused ? '; paused: nobody reads it now' : ''})`);
   }
-  const connectors = items.flatMap((i) => (i.kind === 'connector' ? [i.key] : i.kind === 'quickbooks' ? [`QuickBooks ${i.changes ? 'with changes' : 'read only'}`] : []));
+  const connectors = items.flatMap((i) => (i.kind === 'connector' ? [i.key] : i.kind === 'quickbooks' ? [`QuickBooks ${i.changes ? 'with changes' : i.approval ? 'changes need the owner\'s OK' : 'read only'}`] : []));
   if (connectors.length) parts.push(`Claude connectors ${connectors.join(', ')} (Settings, Connections, Claude connectors)`);
   return parts.length ? parts.join('; ') : null;
 }

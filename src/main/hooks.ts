@@ -93,7 +93,8 @@ import { CONNECTOR_UNDECIDED, connectorAccess, MCP_RESOURCE_TOOLS } from '../sha
 import { accessLine, agentAccessSummary } from '../shared/agentAccess';
 import { MAIL_TOOL_OPS, mailAccess } from '../shared/mailboxes';
 import { WEB_SETTINGS_UNREADABLE, WEB_TOOLS, webAccess } from '../shared/webAccess';
-import { isQuickBooksConnectorTool, isQuickBooksResourceCall, quickbooksAccess, quickbooksCapability } from '../shared/quickbooks';
+import { isQuickBooksConnectorTool, isQuickBooksResourceCall, quickbooksAccess, quickbooksCapability, quickbooksDeclined, quickbooksNeedsOk, QUICKBOOKS_TOO_LARGE, QUICKBOOKS_TOO_MANY_WAITING } from '../shared/quickbooks';
+import type { QuickBooksApprovals } from './quickbooksApprovals';
 import { handoffContext } from '../shared/safeClear';
 import { ownerQuestionsContext, ownerRequestsContext, stuckCardsContext } from '../shared/ownerRequests';
 import { lastAssistantText } from './transcriptText';
@@ -272,7 +273,11 @@ export class HookServer {
     /** The office break's signals (issue 124): a status line's usage windows,
      *  a turn cut off by the usage limit, a prompt taken, a turn finished.
      *  Optional so tests can omit it. */
-    private onPlan?: (signal: PlanSignal) => void
+    private onPlan?: (signal: PlanSignal) => void,
+    /** The QuickBooks changes waiting on the owner's OK, and their one-time
+     *  grants (issue 320). Optional so tests can omit it: a change that needs
+     *  the owner's OK is then refused outright. */
+    private quickbooksApprovals?: QuickBooksApprovals
   ) {}
 
   start(): void {
@@ -672,12 +677,26 @@ export class HookServer {
       const cap = quickbooksCapability(cfg.agentCapabilities?.[agentId]?.quickbooks, this.roleReadsBooks?.(agentId) ?? false);
       const d = quickbooksAccess(cfg.quickbooksClaude === true, cap, p.tool_name ?? '');
       if (!d.ok) {
+        // Changes need my OK (issue 320): an approved call, with the same input, runs once;
+        // anything else is refused and put up for the owner on Ask me. Without the store
+        // (tests) it is refused outright, as Read only. A subagent's call counts as its member's.
+        let reason = d.reason;
+        if (d.approval) {
+          let gate: ReturnType<QuickBooksApprovals['gate']> | undefined;
+          try { gate = this.quickbooksApprovals?.gate(agentId, p.tool_name ?? '', p.tool_input); } catch (e) { console.error('[quickbooks] approvals:', e); }
+          if (gate?.kind === 'granted') return {};
+          if (gate?.kind === 'waiting') { reason = quickbooksNeedsOk(gate.id); }
+          else if (gate?.kind === 'declined') reason = quickbooksDeclined(gate.id);
+          else if (gate?.kind === 'full') reason = QUICKBOOKS_TOO_MANY_WAITING;
+          else if (gate?.kind === 'tooLarge') reason = QUICKBOOKS_TOO_LARGE;
+          else reason = 'You are Read only in QuickBooks right now: do not create, change, send or delete anything there. Tell Michael what you would change, and the owner will do it.';
+        }
         this.emitRefused(agentId, event, p, 'quickbooks');
         return {
           hookSpecificOutput: {
             hookEventName: 'PreToolUse',
             permissionDecision: 'deny',
-            permissionDecisionReason: d.reason
+            permissionDecisionReason: reason
           }
         };
       }

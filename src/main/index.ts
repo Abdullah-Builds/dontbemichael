@@ -116,6 +116,7 @@ import { IntegrationBroker } from './integrationBroker';
 import * as integrations from './integrations';
 import { MailService, handleMailRequest, saveMailbox, removeMailbox, setAgentCapabilities, setSendOnly, cannotStoreReason, type AddMailboxInput } from './mail';
 import { MailApprovals } from './mailApprovals';
+import { QuickBooksApprovals } from './quickbooksApprovals';
 import { standingFitCheck } from './standingCheck';
 import { terminalOverflowEvent } from '../shared/terminalOverflow';
 import { PROVIDER_PRESETS, grantPaused, hasMailTools, mailAccess, mailboxAddress, secretRefForMailbox, sendOnlyGrant, sendingFor, sendingMode, sendingWords, type SendingMode } from '../shared/mailboxes';
@@ -459,6 +460,14 @@ const workerWake = new WorkerWakeWatchdog();
 // When each agent last accepted a prompt, so a typed nudge can confirm it
 // landed (shared/submitConfirm.ts).
 const promptSubmits = new PromptSubmits();
+/** QuickBooks "Changes need my OK" (issue 320): changes an agent wants to make
+ *  that wait for the owner's yes on Ask me, and the one-time grants a yes becomes.
+ *  Kept out of the hive so agents can't change them. */
+const quickbooksApprovals = new QuickBooksApprovals({
+  path: join(app.getPath('userData'), 'quickbooks-approvals.json'),
+  send: (msg) => { if (!hive.enabled()) return false; hive.send(msg); return true; },
+  changed: () => { try { liveWebContents()?.send('quickbooksApprovals:updated'); } catch { /* window gone */ } }
+});
 // HookServer needs BOTH: Oscar's control registry (HITL pause/gate/steer/halt via
 // hook returns) AND Jim's breaker (feed recordToolUse on each PostToolUse).
 // The not reporting watch (issue #326), set up once the store exists below.
@@ -491,7 +500,8 @@ const hookServer = new HookServer(
   companyProfileForAgents,
   (agentId) => booksReadRoleIds().has(agentId),
   memberPresent,
-  (signal) => onPlanSignal(signal)
+  (signal) => onPlanSignal(signal),
+  quickbooksApprovals
 );
 // Pulse's Kept safe: each step a setting stopped, by gate (proposal 3).
 hookServer.onRefused = (agentId, gate) => pulseTelemetry.record({ agentId: agentId ?? null, kind: 'refused', ts: Date.now(), attrs: { gate } });
@@ -5219,7 +5229,16 @@ ipcMain.handle('quickbooks:setAccess', (_evt, agentId: unknown, cap: unknown, op
   const cfg = readConfig();
   const caps = cfg.agentCapabilities ?? {};
   writeConfig({ agentCapabilities: { ...caps, [id]: { ...(caps[id] ?? {}), quickbooks } } });
+  // Off, or no longer needing the owner's OK: what waited or was approved for it lapses.
+  if (!quickbooks.enabled || !quickbooks.approval) { try { quickbooksApprovals.revoke(id); } catch (e) { console.error('[quickbooks] revoke:', e); } }
   return { ok: true };
+});
+// ─── IPC: QuickBooks changes that need the owner's OK (issue 320) ───
+// A member no longer on the team has no card on Ask me: nobody would retry the call.
+ipcMain.handle('quickbooksApprovals:list', () => quickbooksApprovals.waiting().filter((r) => memberPresent(r.agentId)));
+ipcMain.handle('quickbooksApprovals:decide', (_evt, id: unknown, decision: unknown) => {
+  if (typeof id !== 'string' || (decision !== 'approve' && decision !== 'decline')) return { ok: false, error: 'invalid' };
+  return quickbooksApprovals.decide(id, decision);
 });
 // ─── Claude connectors (docs/designs/claude-connectors.md, owner 2026-10-02) ───
 // The connectors on the owner's Claude account, read with `claude mcp list` at

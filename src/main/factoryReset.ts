@@ -71,6 +71,7 @@ export const APP_DATA_ENTRIES = [
   'integration-secrets.json',
   'mail-send-journal.json',
   'mail-proposals.json',
+  'quickbooks-approvals.json',
   'trigger-history.json',
   'owner-dock-keys.json',
   'slack-reply.json',

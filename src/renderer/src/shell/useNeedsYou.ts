@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import type { ScheduleRequest } from '@shared/missions';
 import type { MailProposal } from '@shared/mailProposals';
+import type { QuickBooksApproval } from '@shared/quickbooks';
 import type { OwnerRequest } from '@shared/ownerRequests';
 import type { WorkStyleOffer } from '@shared/workStyleUpdates';
 import type { EngineSetupStatus } from '@shared/engineSetup';
@@ -33,6 +34,8 @@ export interface NeedsYouFeed {
   offers: WorkStyleOffer[];
   /** Emails waiting for the owner's approval (send-on-approval.md). */
   proposals: MailProposal[];
+  /** QuickBooks changes waiting for the owner's OK (issue 320). */
+  booksApprovals: QuickBooksApproval[];
   /** Where Michael's engine stands (get-michael-ready.md); null until read. */
   engineSetup: EngineSetupStatus | null;
   /** The office stop or break, if any (office-stopped-account.md). */
@@ -50,7 +53,7 @@ export interface NeedsYouFeed {
   researchNotice: boolean;
 }
 
-let feed: NeedsYouFeed = { status: 'unknown', tasks: [], requests: [], ownerRequests: [], offers: [], proposals: [], engineSetup: null, stop: null, silent: [], count: 0, reports: 0, researchNotice: false };
+let feed: NeedsYouFeed = { status: 'unknown', tasks: [], requests: [], ownerRequests: [], offers: [], proposals: [], booksApprovals: [], engineSetup: null, stop: null, silent: [], count: 0, reports: 0, researchNotice: false };
 // The offers need the team and the packs, which this module does not import;
 // the app hands it the reader at start (App.tsx).
 let offersSource: (() => Promise<WorkStyleOffer[]>) | null = null;
@@ -80,6 +83,8 @@ const listeners = new Set<() => void>();
 let timer: ReturnType<typeof setInterval> | null = null;
 let offRequests: (() => void) | null = null;
 let offProposals: (() => void) | null = null;
+let offBooksApprovals: (() => void) | null = null;
+let booksApprovalReads = 0;
 let offEngine: (() => void) | null = null;
 let engineReads = 0;
 // `claude auth status` starts a process, so the 5 s poll reads the engine at
@@ -97,7 +102,7 @@ let taskReads = 0;
 let requestReads = 0;
 let ownerReads = 0;
 
-function publish(next: Partial<Pick<NeedsYouFeed, 'status' | 'tasks' | 'requests' | 'ownerRequests' | 'offers' | 'proposals' | 'engineSetup' | 'stop' | 'silent' | 'researchNotice'>>): void {
+function publish(next: Partial<Pick<NeedsYouFeed, 'status' | 'tasks' | 'requests' | 'ownerRequests' | 'offers' | 'proposals' | 'booksApprovals' | 'engineSetup' | 'stop' | 'silent' | 'researchNotice'>>): void {
   // A poll that brings nothing new changes nothing, so nobody re-renders.
   const changed = (Object.keys(next) as Array<keyof typeof next>).some((k) => JSON.stringify(next[k]) !== JSON.stringify(feed[k]));
   if (!changed) return;
@@ -105,7 +110,7 @@ function publish(next: Partial<Pick<NeedsYouFeed, 'status' | 'tasks' | 'requests
   const merged = { ...feed, ...next };
   feed = {
     ...merged,
-    count: merged.tasks.reduce((n, t) => n + openQuestions(t).length, 0) + merged.requests.length + merged.offers.length + merged.proposals.length,
+    count: merged.tasks.reduce((n, t) => n + openQuestions(t).length, 0) + merged.requests.length + merged.offers.length + merged.proposals.length + merged.booksApprovals.length,
     reports: merged.tasks.reduce((n, t) => n + openReportIndexes(t.humanQA).length, 0) + (merged.researchNotice ? 1 : 0)
   };
   // One more while Michael cannot start for want of his engine (get-michael-ready.md),
@@ -177,6 +182,13 @@ function readProposals(): void {
     .catch(() => { /* keep the last value */ });
 }
 
+function readBooksApprovals(): void {
+  const mine = ++booksApprovalReads;
+  void window.cth.listQuickBooksApprovals?.()
+    .then((all) => { if (mine === booksApprovalReads) publish({ booksApprovals: Array.isArray(all) ? all : [] }); })
+    .catch(() => { /* keep the last value */ });
+}
+
 /** Whether the Get Michael ready card shows: Michael cannot start, and no sign
  *  in stop is already asking the owner the same thing (eng R3). */
 export function setupCardShown(f: Pick<NeedsYouFeed, 'engineSetup' | 'stop'>): boolean {
@@ -198,9 +210,11 @@ export function subscribeNeedsYou(listener: () => void): () => void {
     readTasks();
     readRequests();
     readProposals();
+    readBooksApprovals();
     timer = setInterval(readTasks, POLL_MS);
     offRequests = window.cth.onScheduleRequestsUpdated(readRequests);
     offProposals = window.cth.onMailProposalsUpdated?.(readProposals) ?? null;
+    offBooksApprovals = window.cth.onQuickBooksApprovalsUpdated?.(readBooksApprovals) ?? null;
     offEngine = window.cth.onEngineSetupChanged?.(() => readEngine()) ?? null;
     readStop();
     offStop = window.cth.onOfficeBreak?.((v) => publish({ stop: v ?? null })) ?? null;
@@ -216,6 +230,8 @@ export function subscribeNeedsYou(listener: () => void): () => void {
       offRequests = null;
       offProposals?.();
       offProposals = null;
+      offBooksApprovals?.();
+      offBooksApprovals = null;
       offEngine?.();
       offEngine = null;
       offStop?.();
@@ -251,6 +267,7 @@ export function refreshNeedsYou(): void {
   readTasks();
   readRequests();
   readProposals();
+  readBooksApprovals();
   readOffers();
   readResearchNotice();
 }

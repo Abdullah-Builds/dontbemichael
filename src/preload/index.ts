@@ -11,6 +11,7 @@ import type { MailboxRecord, AgentCapabilities, MailProvider, MailServer } from 
 import type { ClaudeConnectorsState } from '../shared/claudeConnectors';
 import type { ScheduledMission, ScheduleRequest } from '../shared/missions';
 import type { MailProposal, ProposalDecision, StandingApproval } from '../shared/mailProposals';
+import type { QuickBooksApproval } from '../shared/quickbooks';
 import type { OwnerDock } from '../shared/ownerRequests';
 import type { AgentProvider } from '../shared/agentProvider';
 import type { EngineSetupStatus } from '../shared/engineSetup';
@@ -1049,7 +1050,7 @@ const api = {
   quickbooksRoleDefaults: (): Promise<string[]> => ipcRenderer.invoke('quickbooks:roleDefaults'),
   /** Save one agent's QuickBooks capability (through the owner's Claude account).
    *  Refused for an id not on the team, unless `hiring` says it is a new hire's. */
-  quickbooksSetAccess: (agentId: string, cap: { enabled: boolean; changes: boolean }, opts?: { hiring?: boolean }): Promise<{ ok: boolean }> =>
+  quickbooksSetAccess: (agentId: string, cap: { enabled: boolean; changes: boolean; approval?: boolean }, opts?: { hiring?: boolean }): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke('quickbooks:setAccess', agentId, cap, opts),
   /** Received and sent messages for an agent's Messages tab, newest first, redacted. */
   hiveHistory: (id: string): Promise<Array<VoiceMessage & { dir: 'in' | 'out' }>> => ipcRenderer.invoke('hive:history', id),
@@ -1479,6 +1480,15 @@ const api = {
     const listener = (): void => cb();
     ipcRenderer.on('mailProposals:updated', listener);
     return () => ipcRenderer.removeListener('mailProposals:updated', listener);
+  },
+  /** QuickBooks changes waiting on the owner's OK on Ask me, and the owner's answer (issue 320). */
+  listQuickBooksApprovals: (): Promise<QuickBooksApproval[]> => ipcRenderer.invoke('quickbooksApprovals:list'),
+  decideQuickBooksApproval: (id: string, decision: 'approve' | 'decline'): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('quickbooksApprovals:decide', id, decision),
+  onQuickBooksApprovalsUpdated: (cb: () => void): (() => void) => {
+    const listener = (): void => cb();
+    ipcRenderer.on('quickbooksApprovals:updated', listener);
+    return () => ipcRenderer.removeListener('quickbooksApprovals:updated', listener);
   },
   /** The owner is closing this agent: pause its schedules and mark it closed. */
   closeAgentByOwner: (id: string): Promise<{ ok: boolean; paused: number }> =>

@@ -156,7 +156,7 @@ test('the Tasks view reads open owner requests from the shared feed and badges t
   // Value: protects=the badge comes from the same cached read as everything else and never lands on Ask me; fails_when=the feed stops reading owner requests, counts them as needing the owner, or the card loses its badge; why_new=new UI wiring (T5); seam=source pin, the renderer has no DOM test harness
   const feed = fs.readFileSync(path.resolve(__dirname, '../src/renderer/src/shell/useNeedsYou.ts'), 'utf8');
   assert.match(feed, /window\.cth\.hiveOwnerRequests\?\.\(\)/);
-  assert.match(feed, /count: merged\.tasks\.reduce\(\(n, t\) => n \+ openQuestions\(t\)\.length, 0\) \+ merged\.requests\.length \+ merged\.offers\.length \+ merged\.proposals\.length,/, 'they wait on Michael, not the owner');
+  assert.match(feed, /count: merged\.tasks\.reduce\(\(n, t\) => n \+ openQuestions\(t\)\.length, 0\) \+ merged\.requests\.length \+ merged\.offers\.length \+ merged\.proposals\.length \+ merged\.booksApprovals\.length,/, 'they wait on Michael, not the owner');
   const kanban = fs.readFileSync(path.resolve(__dirname, '../src/renderer/src/components/TasksKanban.tsx'), 'utf8');
   assert.match(kanban, /michaelCardState\(r\.createdAt, now, office\.days, office\.work\)/);
   assert.match(kanban, /pack\?\.officeHours\?\.days/);

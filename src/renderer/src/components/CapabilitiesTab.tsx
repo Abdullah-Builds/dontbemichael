@@ -10,7 +10,7 @@ import { SENDING_LABEL_KEY } from './sendingLabels';
 import { useRtl } from '@/i18n/useDirection';
 import type { StandingApproval } from '@shared/mailProposals';
 import { missionsFor } from '@shared/missions';
-import { quickbooksCapability, type QuickBooksCapability } from '@shared/quickbooks';
+import { quickbooksCapability, quickbooksCapabilityOf, quickbooksLevel, type QuickBooksCapability, type QuickBooksLevel } from '@shared/quickbooks';
 import { connectorGranted, connectorOn, isQuickBooksKey } from '@shared/claudeConnectors';
 import { useResolvedGodName } from '@/hooks/useResolvedGodName';
 import { InfoTip } from './InfoTip';
@@ -395,9 +395,13 @@ export function CapabilitiesTab({ agent }: { agent: Agent }) {
                       <div style={{ flexBasis: '100%', paddingInlineStart: 12 }}>
                         <RadioRows
                           label={t('capabilities.booksChanges')}
-                          value={String(books.changes)}
-                          options={[{ value: 'false', label: t('capabilities.booksReadOnly'), desc: t('capabilities.booksReadOnlyDesc') }, { value: 'true', label: t('capabilities.booksCanChange'), desc: t('capabilities.booksCanChangeDesc') }]}
-                          onChange={(v) => { if ((v === 'true') !== books.changes) void saveBooks({ enabled: true, changes: v === 'true' }); }}
+                          value={quickbooksLevel(books)}
+                          options={[
+                            { value: 'read', label: t('capabilities.booksReadOnly'), desc: t('capabilities.booksReadOnlyDesc') },
+                            { value: 'approval', label: t('capabilities.booksNeedsOk'), desc: t('capabilities.booksNeedsOkDesc') },
+                            { value: 'changes', label: t('capabilities.booksCanChange'), desc: t('capabilities.booksCanChangeDesc') }
+                          ]}
+                          onChange={(v) => { if (v !== quickbooksLevel(books)) void saveBooks(quickbooksCapabilityOf(v as QuickBooksLevel)); }}
                         />
                       </div>
                     )}

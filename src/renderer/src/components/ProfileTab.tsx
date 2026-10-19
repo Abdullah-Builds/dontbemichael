@@ -120,7 +120,7 @@ export function ProfileTab({ agent }: { agent: Agent }) {
   const useLabel = (i: AccessItem): string =>
     i.kind === 'mailbox' ? `${i.address} (${t(SENDING_LABEL_KEY[i.sending])})`
       : i.kind === 'send-only' ? t('capabilities.sendOnlyUse', { address: i.address, sending: t(SENDING_LABEL_KEY[i.sending]) })
-      : i.kind === 'quickbooks' ? `QuickBooks (${t(i.changes ? 'capabilities.booksCanChange' : 'capabilities.booksReadOnly')})`
+      : i.kind === 'quickbooks' ? `QuickBooks (${t(i.changes ? 'capabilities.booksCanChange' : i.approval ? 'capabilities.booksNeedsOk' : 'capabilities.booksReadOnly')})`
         : i.key;
 
   return (
