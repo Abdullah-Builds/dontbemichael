@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const loadTs = require('./load-ts.cjs');
 
-const { validateHookEvent, isTerminalPrompt, TERMINAL_PROMPT_TYPES } = loadTs('src/shared/hookEvents.ts');
+const { validateHookEvent, isTerminalPrompt, TERMINAL_PROMPT_TYPES, batchToolUseIds, MAX_BATCH_TOOL_USE_IDS } = loadTs('src/shared/hookEvents.ts');
 
 test('accepts valid hook event payloads', () => {
   assert.equal(validateHookEvent({
@@ -39,6 +39,20 @@ test('rejects malformed optional fields', () => {
   assert.equal(validateHookEvent({ agentId: 'jim-1', event: 'Stop', blocked: 'false' }), false);
   assert.equal(validateHookEvent({ agentId: 'jim-1', event: 'PreToolUse', detail: 7 }), false);
   assert.equal(validateHookEvent(null), false);
+});
+
+test('a finished batch carries a clean list of call ids', () => {
+  // Value: protects=only call ids cross to the panel; fails_when=a bad entry or an endless list gets through; why_new=maintainer review of #401; seam=none
+  const list = [{ tool_use_id: 'toolu_a' }, { tool_use_id: 7 }, null, 'toolu_b', {}, { tool_use_id: '' }, { tool_use_id: 'x'.repeat(129) }, { tool_use_id: 'toolu_c' }];
+  assert.deepEqual(batchToolUseIds(list), ['toolu_a', 'toolu_c']);
+  assert.deepEqual(batchToolUseIds(undefined), []);
+  assert.deepEqual(batchToolUseIds({ tool_use_id: 'toolu_a' }), []);
+  assert.equal(batchToolUseIds(Array.from({ length: 300 }, (_, i) => ({ tool_use_id: `toolu_${i}` }))).length, MAX_BATCH_TOOL_USE_IDS);
+  assert.equal(validateHookEvent({ agentId: 'pam', event: 'PostToolBatch', toolUseIds: ['toolu_a', 'toolu_c'] }), true);
+  assert.equal(validateHookEvent({ agentId: 'pam', event: 'PostToolBatch', toolUseIds: [] }), true);
+  assert.equal(validateHookEvent({ agentId: 'pam', event: 'PostToolBatch', toolUseIds: 'toolu_a' }), false);
+  assert.equal(validateHookEvent({ agentId: 'pam', event: 'PostToolBatch', toolUseIds: ['toolu_a', 7] }), false);
+  assert.equal(validateHookEvent({ agentId: 'pam', event: 'PostToolBatch', toolUseIds: Array(300).fill('toolu_a') }), false);
 });
 
 test('main and preload share the hook event contract', () => {

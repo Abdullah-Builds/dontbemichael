@@ -40,6 +40,12 @@ jobs:
       - name: Release links consistent
         run: npm run check:links
 
+      # Release gate: every bold lead in under What's new must end in . ! ? or a comma, the
+      # rule dontbemichael.com's /download list reads (website latest.js whatsNew). 0.2.4
+      # shipped "**Company foundations:**" and the site dropped its headline.
+      - name: Release lead ins show on the website
+        run: npm run check:leadins
+
   build:
     name: Build
     runs-on: macos-latest

@@ -45,6 +45,10 @@ export interface FolderLayout {
    *  (`<harnessHome>/agent-settings`), which set its sandbox at its next start
    *  (issue 100). Any agent may read them; none, Michael included, changes them. */
   appLocked?: string[];
+  /** The engine's record of every session: its projects folder and its prompt
+   *  history. The engine writes both itself; no agent, Michael included, opens
+   *  them with its tools, so nobody reads a teammate's conversation. */
+  engineRecords?: { projects: string; history: string };
 }
 
 export interface AgentFolderPolicy {
@@ -89,6 +93,12 @@ export function folderPolicy(agent: FolderAgent, layout: FolderLayout, caseInsen
   for (const f of layout.appLocked ?? []) {
     policy.sandbox.denyWrite.push(f);
     policy.deny.push(rule('Edit', f));
+  }
+  if (layout.engineRecords) {
+    const { projects, history } = layout.engineRecords;
+    policy.sandbox.denyRead.push(projects, history);
+    policy.sandbox.denyWrite.push(projects, history);
+    policy.deny.push(rule('Read', projects), rule('Edit', projects), fileRule('Read', history), fileRule('Edit', history));
   }
 
   if (agent.isGod) {
@@ -140,6 +150,10 @@ export function folderDecision(
   }
   if (writes && (layout.appLocked ?? []).some((f) => inside(f, target))) {
     return { deny: true, reason: 'That folder holds the app\'s own program and settings. You can read it, but nobody on the team changes it.' };
+  }
+  const records = layout.engineRecords;
+  if (records && (inside(records.projects, target) || same(records.history, target))) {
+    return { deny: true, reason: 'That is where every team member\'s conversations are kept, so nobody on the team opens it.' };
   }
 
   if (agent.isGod) {
@@ -404,6 +418,11 @@ function rule(tool: 'Read' | 'Edit', folder: string): string {
   const p = resolve(folder).replace(/\\/g, '/');
   // Absolute paths are written with a leading `//` in permission rules.
   return `${tool}(/${p.startsWith('/') ? p : `/${p}`}/**)`;
+}
+
+/** The same rule for one file. */
+function fileRule(tool: 'Read' | 'Edit', file: string): string {
+  return rule(tool, file).slice(0, -4) + ')';
 }
 
 /** Team folders, each once, never Michael's folder itself. */

@@ -224,7 +224,7 @@ export function costForWork(member: Record<WorkKind, number>, perPiece: Partial<
 
 /** Kept as is (E2): drafts approved without edits plus finished cards never
  *  reopened, over drafts decided (not cancelled) plus finished cards. */
-export function keptAsIs(agentId: string, decisions: MailDecision[], cards: CardFact[]): { kept: number; decisions: number; share: number | null } {
+export function keptAsIs(agentId: string, decisions: MailDecision[], cards: CardFact[], minDecisions = MIN_DECISIONS): { kept: number; decisions: number; share: number | null } {
   let kept = 0, total = 0;
   for (const d of decisions) {
     if (d.agentId !== agentId || d.decision === 'cancelled') continue;
@@ -236,7 +236,7 @@ export function keptAsIs(agentId: string, decisions: MailDecision[], cards: Card
     total++;
     if (!c.reopened) kept++;
   }
-  return { kept, decisions: total, share: total >= MIN_DECISIONS ? kept / total : null };
+  return { kept, decisions: total, share: total >= minDecisions ? kept / total : null };
 }
 
 /** The whole Pulse snapshot for a period. */
@@ -422,7 +422,9 @@ export function teamAtWork(members: Array<{ agentId: string; busyMs: number; usd
     if (chips[m.agentId]) return;
     if (i === 0) chips[m.agentId] = { kind: 'busiest' };
     else if (avgMs > 0 && m.busyMs >= 2 * avgMs) chips[m.agentId] = { kind: 'times', times: Math.round((m.busyMs / avgMs) * 10) / 10 };
-    else if (m.busyMs < avgMs * 0.25) { chips[m.agentId] = { kind: 'quiet' }; quiet.push(m.agentId); }
+    // A member with no time at all is not "mostly quiet": Pulse folds them into
+    // one "N more were quiet" row instead (eng review D1, 2026-10-19).
+    else if (m.busyMs > 0 && m.busyMs < avgMs * 0.25) { chips[m.agentId] = { kind: 'quiet' }; quiet.push(m.agentId); }
   });
   const topTwo = members.length >= 3 ? { ids: byBusy.slice(0, 2).map((m) => m.agentId), share: (byBusy[0].busyMs + byBusy[1].busyMs) / totalMs } : null;
   return { avgMs, totalMs, chips, topTwo, quiet, costliest: costliest ? { agentId: costliest.agentId, usd: costliest.usd, busyMs: costliest.busyMs } : null };

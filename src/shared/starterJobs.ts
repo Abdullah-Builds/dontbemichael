@@ -65,3 +65,92 @@ export function starterMissionsFor(
   }
   return out;
 }
+
+/** Only the Office Pack fields needed to suggest jobs without importing the
+ * pack validator (which already imports parseStarterSchedule from this file). */
+export interface StarterSuggestionPack {
+  businessType: string;
+  agents: Array<{ id: string }>;
+  officeHours: StarterHours;
+  starterMissions?: StarterJob[];
+}
+
+export interface StarterSuggestion {
+  job: StarterJob;
+  hours: StarterHours;
+}
+
+/** Suggestions belong to the card this teammate was hired from. Original team
+ * members have no sourceCard, so use their office's pack, then core. Only
+ * valid, distinct jobs appear, with at most three choices in an empty tab. */
+export function starterSuggestionsFor(
+  packs: StarterSuggestionPack[],
+  businessType: string | undefined,
+  agentId: string,
+  sourceCard?: string,
+  limit = 3
+): StarterSuggestion[] {
+  const [sourceType, sourceId] = sourceCard?.split('/') ?? [];
+  const definitionId = sourceCard ? sourceId : agentId;
+  const hasCard = (p: StarterSuggestionPack, id: string | undefined) =>
+    !!id && p.agents.some((a) => a.id === id);
+  const preferred = packs.find((p) => p.businessType === businessType && hasCard(p, agentId));
+  const core = packs.find((p) => p.businessType === 'core' && hasCard(p, agentId));
+  const pack = sourceCard
+    ? packs.find((p) => p.businessType === sourceType && hasCard(p, definitionId))
+    : preferred?.starterMissions?.some((job) => job.agentId === agentId) ? preferred : core ?? preferred;
+  if (!pack || !definitionId) return [];
+  const seen = new Set<string>();
+  return (pack.starterMissions ?? [])
+    .filter((job) => {
+      if (job.agentId !== definitionId || !parseStarterSchedule(job.schedule, pack.officeHours) || !cleanFocus(job.focus)) return false;
+      const title = job.title.trim().toLowerCase();
+      if (seen.has(title)) return false;
+      seen.add(title);
+      return true;
+    })
+    .slice(0, limit)
+    .map((job) => ({ job, hours: pack.officeHours }));
+}
+
+/** A suggested job is only a proposal: saving it must never start a run.
+ * Use the same parser, focus and duplicate guard as jobs seeded at hire. */
+export function pausedStarterMission(
+  suggestion: StarterSuggestion,
+  to: string,
+  existing: ScheduledMission[],
+  godId: string,
+  newId: (i: number) => string
+): ScheduledMission | null {
+  const [mission] = starterMissionsFor(
+    [suggestion.job], suggestion.hours, suggestion.job.agentId, to, existing, godId, newId
+  );
+  return mission ? { ...mission, enabled: false } : null;
+}
+
+/** Keep offering the remaining starters while this member only has jobs matching
+ * its pack. Compare the job itself, not runtime state (enabled, last run, etc.),
+ * so an unrelated custom job, including one with a starter's name, hides them. */
+export function remainingStarterMissions(
+  starters: StarterSuggestion[],
+  to: string,
+  existing: ScheduledMission[],
+  godId: string,
+  newId: (i: number) => string
+): ScheduledMission[] {
+  const candidates = starters.flatMap((starter, i) => {
+    const mission = pausedStarterMission(starter, to, [], godId, () => newId(i));
+    return mission ? [mission] : [];
+  });
+  const mine = missionsFor(existing, to, godId);
+  const sameJob = (a: ScheduledMission, b: ScheduledMission) =>
+    a.label.trim().toLowerCase() === b.label.trim().toLowerCase()
+    && cleanFocus(a.focus) === cleanFocus(b.focus)
+    && !a.body && (!a.kind || a.kind === 'dispatch')
+    && a.intervalMs === b.intervalMs
+    && JSON.stringify(a.weekly) === JSON.stringify(b.weekly)
+    && JSON.stringify(a.times) === JSON.stringify(b.times);
+  if (mine.some((mission) => !candidates.some((candidate) => sameJob(mission, candidate)))) return [];
+  const have = new Set(mine.map((mission) => mission.label.trim().toLowerCase()));
+  return candidates.filter((mission) => !have.has(mission.label.trim().toLowerCase())).slice(0, 3);
+}

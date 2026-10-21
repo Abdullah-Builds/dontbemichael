@@ -69,6 +69,12 @@ test('name swap is whole word only', () => {
   assert.equal(H.swapName('text', '', 'Erin'), 'text');
 });
 
+test('a new name with a dollar sign is written as typed', () => {
+  assert.equal(H.swapName('Pam sorts the inbox. Ask Pam.', 'Pam', 'A$$AP'), 'A$$AP sorts the inbox. Ask A$$AP.');
+  assert.equal(H.swapName('Ask Pam first.', 'Pam', 'Mr $& Jr'), 'Ask Mr $& Jr first.');
+  assert.equal(H.swapName('Ask Pam first.', 'Pam', "Cash$'"), "Ask Cash$' first.");
+});
+
 test('a hire gets its own folder, suffixed with its name on a clash', () => {
   const taken = new Set(['Admin', 'Admin_Erin']);
   assert.equal(H.hireFolderName('Finance', 'Kevin', (f) => taken.has(f)), 'Finance');

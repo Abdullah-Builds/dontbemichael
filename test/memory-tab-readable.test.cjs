@@ -110,7 +110,8 @@ test('the tab shows the memory first and one search box below it', () => {
   const tab = src.slice(src.indexOf('function MemoryTab('), src.indexOf('const srOnly'));
   assert.ok(tab.indexOf('<MemoryNotes') > 0 && tab.indexOf('<MemoryNotes') < tab.indexOf("memoryNotes.searchTitle')}</h3>"), 'notes before search');
   assert.equal((tab.match(/<input/g) || []).length, 1, 'one search box');
-  assert.match(tab, /role="radiogroup"/);
+  // Exact words only: search by meaning covers company knowledge, in Settings (owner, 2026-10-19).
+  assert.doesNotMatch(tab, /role="radiogroup"/);
   assert.match(tab, /aria-pressed=\{showFile\}/, 'Show the file toggles the raw text');
   assert.match(tab, /<MarkdownPreview source=\{detail\.index\} variant="card" \/>/, 'free-form memory falls back to markdown');
 });

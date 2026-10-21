@@ -7,7 +7,7 @@ It is generated from the pull requests themselves rather than from commit metada
 dropped because their git email does not happen to match their GitHub account. It is regenerated
 from merged pull requests, so you appear without having to ask.
 
-**126 people** have contributed so far.
+**128 people** have contributed so far.
 
 <a href="https://github.com/agentvivekkumar/dontbemichael/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=agentvivekkumar/dontbemichael" alt="Contributor avatars">
@@ -22,8 +22,8 @@ requests, and a pull request always has a real account behind it.
 
 | Contributor | Contributions | First | Most recent |
 |---|---:|---|---|
-| [@agentvivekkumar](https://github.com/agentvivekkumar) | 53 | 2026-09-15 | 2026-10-19 |
-| [@amartya1523](https://github.com/amartya1523) | 36 | 2026-10-10 | 2026-10-18 |
+| [@agentvivekkumar](https://github.com/agentvivekkumar) | 60 | 2026-09-15 | 2026-10-20 |
+| [@amartya1523](https://github.com/amartya1523) | 40 | 2026-10-10 | 2026-10-19 |
 | [@SantoshMalana](https://github.com/SantoshMalana) | 9 | 2026-10-12 | 2026-10-13 |
 | [@dhruvpuri](https://github.com/dhruvpuri) | 7 | 2026-10-10 | 2026-10-10 |
 | [@Kartikey1306](https://github.com/Kartikey1306) | 6 | 2026-10-12 | 2026-10-12 |
@@ -40,6 +40,7 @@ requests, and a pull request always has a real account behind it.
 | [@ThanishaDewangan](https://github.com/ThanishaDewangan) | 2 | 2026-10-17 | 2026-10-17 |
 | [@Shamsher2000](https://github.com/Shamsher2000) | 2 | 2026-10-18 | 2026-10-18 |
 | [@Utsavd7](https://github.com/Utsavd7) | 2 | 2026-10-18 | 2026-10-18 |
+| [@lukmanj19](https://github.com/lukmanj19) | 2 | 2026-10-21 | 2026-10-21 |
 | [@josephzhang0602](https://github.com/josephzhang0602) | 1 | 2026-10-10 | 2026-10-10 |
 | [@rajukancharla21](https://github.com/rajukancharla21) † | 1 | 2026-10-10 | 2026-10-10 |
 | [@Junaid522](https://github.com/Junaid522) | 1 | 2026-10-10 | 2026-10-10 |
@@ -148,8 +149,9 @@ requests, and a pull request always has a real account behind it.
 | [@rekkun8](https://github.com/rekkun8) | 1 | 2026-10-19 | 2026-10-19 |
 | [@MickyG03](https://github.com/MickyG03) | 1 | 2026-10-19 | 2026-10-19 |
 | [@umairdevlife-jpg](https://github.com/umairdevlife-jpg) | 1 | 2026-10-19 | 2026-10-19 |
+| [@MriBoyd](https://github.com/MriBoyd) | 1 | 2026-10-21 | 2026-10-21 |
 
-_251 pull requests from 126 people._
+_265 pull requests from 128 people._
 
 ## † Contributions that never got the merged badge
 

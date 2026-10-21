@@ -6,43 +6,17 @@
  * the ring.
  */
 import type { DepartmentName } from '@/design/tokens';
-import { OFFICE_ROLES } from '@shared/officeRoles';
+import { OFFICE_ROLES, departmentOf as sharedDepartmentOf } from '@shared/officeRoles';
 import { G, P, type Pt } from './iso';
 
 /** The fields layout needs from an agent. */
 export interface Seatable { id: string; character?: string; description?: string; sourceCard?: string; isGod?: boolean }
 
-const KEYWORDS: [RegExp, DepartmentName][] = [
-  [/\b(sales|business development|account exec)/i, 'sales'],
-  [/\b(admin|assistant|front desk|reception|executive|office coordinator)/i, 'front-desk'],
-  [/\b(support|customer|service|success|help ?desk)/i, 'support'],
-  [/\b(financ|accountan|accounting|bookkeep|billing|payroll|cfo|controller)/i, 'finance'],
-  [/\b(market|social|content|brand|seo|community)/i, 'marketing'],
-  [/\b(hr\b|human resources|people|recruit|talent)/i, 'people'],
-  [/\b(it\b|engineer|security|developer|devops|systems)/i, 'it'],
-  [/\b(supply|inventory|shipping|logistic|quality|warehouse|procure|purchas)/i, 'operations']
-];
-
 const ROLES = OFFICE_ROLES as Record<string, { role: string }>;
 
-function fromText(text?: string): DepartmentName | null {
-  if (!text) return null;
-  for (const [re, dept] of KEYWORDS) if (re.test(text)) return dept;
-  return null;
-}
-
-/** The department a team member sits in. The job card they were hired with
- *  decides first (a hire can bring a job that is not the character's usual
- *  one); a pack member's id is its card's. Then the character's usual job, then
- *  the start of their role line, else the general team pod. */
-export function departmentOf(a: Seatable): DepartmentName {
-  const card = a.sourceCard?.split('/').pop();
-  return fromText(card ? ROLES[card]?.role : undefined)
-    ?? (a.sourceCard ? null : fromText(ROLES[a.id]?.role))
-    ?? (a.sourceCard ? null : fromText(a.character ? ROLES[a.character]?.role : undefined))
-    ?? fromText(a.description?.slice(0, 60))
-    ?? 'team';
-}
+/** The department a team member sits in (src/shared/officeRoles.ts); the
+ *  shared names are the studio's department names. */
+export const departmentOf = sharedDepartmentOf as (a: Seatable) => DepartmentName;
 
 /** A short job title for a card or a panel header: the hired job card's role,
  *  else the character's usual job, else the first phrase of the role line (a

@@ -1176,6 +1176,70 @@ test('a time an agent typed is replaced by the app\'s', async (t) => {
   }
 });
 
+/** The outbox journal: the app's record for one outbox file (Codex review, ship 2026-10-18). */
+const journalDir = (hive, from) => path.join(path.dirname(hive.root()), 'private', 'outbox-routing', from);
+/** One pass that dies after delivering, before the file is archived. */
+const passThatDies = (hive) => {
+  hive.archiveOutboxFile = () => {};
+  try { hive.routeOnce(); } finally { delete hive.archiveOutboxFile; }
+};
+
+test('a message delivered by a pass that died before archiving it is not delivered again', async (t) => {
+  // Value: protects=a crash between delivery and archive never doubles a message; fails_when=the replay routes it again under a new id; why_new=Codex review, ship 2026-10-18 (the app makes every id, so nothing deduped a replay); seam=archiveOutboxFile stubbed for one pass
+  const { hive } = await office(t);
+  send(hive, 'pam', { to: 'god', act: 'inform', subject: 'once', body: 'b' });
+  passThatDies(hive);
+  const first = notes(hive, 'god', 'once');
+  assert.equal(first.length, 1);
+  assert.ok(fs.existsSync(path.join(hive.root(), 'agents', 'pam', 'outbox', 'm1.json')), 'the file is still in the outbox');
+  hive.routeOnce();
+  assert.equal(notes(hive, 'god', 'once').length, 1, 'not again');
+  assert.equal(sentId(hive, 'pam'), first[0].id, 'the sent copy names the id it was delivered under');
+  assert.deepEqual(fs.readdirSync(journalDir(hive, 'pam')), [], 'the record goes once it is archived');
+});
+
+test('a pass that died before recording the delivery delivers again under the same id, so the copy replaces itself', async (t) => {
+  // Value: protects=the narrow window between delivery and its record still leaves one copy; fails_when=the replay picks a new id; why_new=Codex review, ship 2026-10-18; seam=the journal record set back to not delivered
+  const { hive } = await office(t);
+  send(hive, 'pam', { to: 'god', act: 'inform', subject: 'once', body: 'b' });
+  passThatDies(hive);
+  const [first] = notes(hive, 'god', 'once');
+  const rec = path.join(journalDir(hive, 'pam'), 'm1.json');
+  fs.writeFileSync(rec, JSON.stringify({ ...JSON.parse(fs.readFileSync(rec, 'utf8')), delivered: false }));
+  hive.routeOnce();
+  const again = notes(hive, 'god', 'once');
+  assert.equal(again.length, 1, 'one copy');
+  assert.deepEqual([again[0].id, again[0].created_at], [first.id, first.created_at], 'the same id and time');
+});
+
+test('a schedule request is filed once though the pass died before archiving it', async (t) => {
+  // Value: protects=a crash never files a schedule request or answers it twice; fails_when=the replay calls the scheduler again; why_new=Codex review, ship 2026-10-18; seam=archiveOutboxFile stubbed for one pass
+  const { hive } = await office(t);
+  let filed = 0;
+  hive.onScheduleRequest(() => { filed++; return 'Schedule request sent.'; });
+  send(hive, 'pam', { to: 'scheduler', act: 'request', subject: 's', body: 'why', schedule: { kind: 'x' } });
+  passThatDies(hive);
+  hive.routeOnce();
+  assert.equal(filed, 1);
+  assert.equal(notes(hive, 'pam', 'Schedule request').length, 1);
+});
+
+test('a journal record whose file is gone, or names another file, is never used', async (t) => {
+  // Value: protects=a stale record never gives a new message an old id; fails_when=records outlive their file or are matched by name alone; why_new=Codex review, ship 2026-10-18; seam=records written by hand
+  const { hive } = await office(t);
+  const dir = journalDir(hive, 'pam');
+  fs.mkdirSync(dir, { recursive: true });
+  const old = { ino: 1, birth: 1, id: '20260101-000000-aaaa', created_at: '2026-01-01T00:00:00.000Z', delivered: true };
+  fs.writeFileSync(path.join(dir, 'gone.json'), JSON.stringify(old));
+  fs.writeFileSync(path.join(dir, 'm1.json'), JSON.stringify(old));
+  send(hive, 'pam', { to: 'god', act: 'inform', subject: 'new', body: 'b' });
+  hive.routeOnce();
+  const [m] = notes(hive, 'god', 'new');
+  assert.ok(m, 'delivered, not skipped as delivered');
+  assert.notEqual(m.id, old.id, 'a fresh id');
+  assert.deepEqual(fs.readdirSync(dir), [], 'both records went');
+});
+
 test('Research\'s schedule request is archived as Research wrote it', async (t) => {
   // Value: protects=Research's files are the app's own record, never written over (red team, third ship); fails_when=the scheduler branch stamps Research's file; why_new=ship review; seam=none
   const { hive } = await office(t);

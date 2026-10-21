@@ -117,7 +117,7 @@ test('cards name links; documents show them as written (D3, D5, D6, R2)', () => 
 test('Michael is told to write links as words, in asks and in dock replies (D2, R3)', () => {
   // Value: protects=the agent rule in all four places; fails_when=a rule is rewritten and drops the sentence; why_new=new rule; seam=none; no_claim=whether agents follow it (no eval)
   const hive = read('src/main/hive.ts');
-  assert.match(hive, /Put amounts, file names and account names in backticks\. Write each link as a few words naming what opens/, 'ask rule');
+  assert.match(hive, /Put amounts and account names in backticks, and name each file by its full path, with its file ending, in backticks, so the owner can open it\. Write each link as a few words naming what opens/, 'ask rule (owner, 2026-10-19: a file opens from its chip)');
   assert.match(hive, /never paste a report\. Write each link as a few words naming what opens/, 'dock reply rule');
   assert.match(hive, /in \\`backticks\\`; write each link as a few words naming what opens/, 'Michael standing rule');
   assert.match(hive, /\n- each link as a few words naming what opens, like \[the company in HubSpot\]/, 'HIVE doc rule');

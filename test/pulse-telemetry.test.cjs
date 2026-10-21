@@ -161,14 +161,15 @@ test('a failed write is counted for its day and the day is reported; records kee
   assert.deepEqual([day.tasks, day.emails, day.awayPieces], [1, 2, 3], 'the owner was away for all of it');
 });
 
-const { PulseService } = loadTs('src/main/pulse.ts');
+const { PulseService, earliest } = loadTs('src/main/pulse.ts');
 
 function service(t, opts = {}) {
   const env = setup(t);
   const t0 = new Date(2026, 9, 1, 9).getTime();
   env.clock.at(t0);
-  // 14 runs over two weeks of Toby's check, 12 found nothing.
-  for (let i = 0; i < 14; i++) {
+  // 14 runs over two weeks of Toby's check, 12 found nothing (opts.days stops sooner).
+  const runDays = opts.days ?? 14;
+  for (let i = 0; i < runDays; i++) {
     const at = t0 + i * 86_400_000;
     env.store.record({ agentId: 'toby', kind: 'run-dispatch', ts: at, attrs: { mission: 'm1' } });
     env.store.record({ agentId: 'toby', kind: 'prompt', ts: at + 1000 });
@@ -177,7 +178,7 @@ function service(t, opts = {}) {
     env.clock.at(at + 2000 + 3 * 60_000);
     env.proc.tick('/office');
   }
-  env.clock.at(t0 + 15 * 86_400_000);
+  env.clock.at(t0 + (runDays + 1) * 86_400_000);
   let missions = [{ id: 'm1', label: 'Benefits inbox check', to: 'toby', intervalMs: 2 * 3600_000, body: '', enabled: true, kind: 'dispatch' }];
   const models = opts.models ?? [{ agentId: 'toby', provider: 'claude', model: 'claude-opus-5-5' }];
   const svc = new PulseService({
@@ -185,10 +186,27 @@ function service(t, opts = {}) {
     members: () => [{ id: 'toby', isGod: false }, { id: 'god', isGod: true }], godId: () => 'god', tasks: () => [],
     missions: () => missions, models: () => models, ladder: () => [], priceOf: () => undefined,
     applyMissions: (change) => { const next = change(missions); if (!next) return { ok: false, error: 'not found' }; missions = next; return { ok: true }; },
-    billing: () => opts.billing ?? 'account', plan: () => opts.plan ?? null, memory: () => ({ notes: [], procedures: {} }), now: env.clock.now
+    billing: () => opts.billing ?? 'account', plan: () => opts.plan ?? null, memory: () => ({ notes: [], procedures: {} }), now: env.clock.now,
+    ...(opts.memberJobs ? { memberJobs: opts.memberJobs } : {}),
+    ...(opts.foundationsAnswers ? { foundationsAnswers: opts.foundationsAnswers } : {})
   });
   return { ...env, svc, missions: () => missions, setMissions: (m) => { missions = m; } };
 }
+
+test('before 14 live days Pulse shows what the advice rules see so far, as facts; on day 15 the advice takes over (owner, 2026-10-19)', (t) => {
+  // Value: protects=eng D1 (the four rules early, at half their evidence, live days only) and the hand over to advice; fails_when=early lines show after advice is ready, show nothing at half the evidence, or advice shows before 14 days; why_new=new early mode; seam=none; no_claim=the wording on screen (pulse-view pins)
+  const early = service(t, { days: 8 });
+  const v8 = early.svc.snapshot('this-week');
+  assert.deepEqual(v8.advice, [], 'no advice before 14 live days');
+  assert.equal(v8.early.length, 1);
+  assert.equal(v8.early[0].kind, 'run-less');
+  assert.deepEqual(v8.early[0].evidence, { runs: 8, nothing: 6 }, 'counted over the 8 live days only');
+  const few = service(t, { days: 4 });
+  assert.deepEqual(few.svc.snapshot('this-week').early, [], '4 runs: under half the 10 run minimum');
+  const ready = service(t).svc.snapshot('this-week');
+  assert.deepEqual(ready.early, [], 'no early lines once advice can show');
+  assert.equal(ready.advice[0].kind, 'run-less');
+});
 
 test('Apply changes a schedule only if it still is what the advice saw; Undo restores it; Not now hides it', (t) => {
   // Value: protects=D10 apply and undo, compare and set, D13 dismiss; fails_when=a stale or double click overwrites a schedule, Undo restores the wrong value, or a dismissed card stays; why_new=new apply path; seam=none; no_claim=the Schedules UI refresh (missions:updated is sent by applyMissions)
@@ -576,4 +594,39 @@ test('note-added records come back by office with id and source, and the first o
   ]);
   const row = persist.database().prepare("SELECT attrs FROM telemetry_events WHERE kind = 'note-added' AND agent_id = 'pam' AND attrs IS NOT NULL").get();
   assert.deepEqual(Object.keys(JSON.parse(row.attrs)).sort(), ['id', 'source'], 'never the note itself');
+});
+
+test('the foundations proof splits a member\'s work at the first answered hit question, and the record decides what is answered', (t) => {
+  // Value: protects=D14 proof (half the evidence on each side) and that the record, not lossy events, says what is answered; fails_when=the split uses the wrong time, one side under the minimum still shows a proof, a broken row throws, or a lost answered event leaves a question missing; why_new=pulse.ts foundations() had only a source pin; seam=none; no_claim=on screen wording (pulse-view pins)
+  let answers = { customers: { at: new Date(2026, 9, 10, 9).toISOString() } };
+  const env = service(t, { days: 2, memberJobs: () => ({ toby: ['marketing'] }), foundationsAnswers: () => answers });
+  const t0 = new Date(2026, 9, 1, 9).getTime();
+  const tAnswer = new Date(2026, 9, 10, 9).getTime();
+  env.store.record({ agentId: 'toby', kind: 'foundation', ts: t0 + 1000, attrs: { q: 'customers', change: 'hit' } });
+  // The answered event is lost: only the record knows.
+  env.store.record({ agentId: 'toby', kind: 'foundation', ts: t0 + 2000, attrs: { q: 'voice', change: 'hit' } });
+  env.persist.database().prepare("INSERT INTO telemetry_events (office, agent_id, kind, ts, value, attrs) VALUES ('/office', 'toby', 'foundation', ?, NULL, '{broken')").run(t0 + 3000);
+  for (let i = 0; i < 5; i++) {
+    env.store.record({ agentId: 'toby', kind: 'mail-decision', ts: tAnswer - (i + 1) * 3600_000, attrs: { decision: i < 2 ? 'approve' : 'edit' } });
+    env.store.record({ agentId: 'toby', kind: 'mail-decision', ts: tAnswer + (i + 1) * 3600_000, attrs: { decision: i < 4 ? 'approve' : 'edit' } });
+  }
+  env.store.flush();
+  const f = env.svc.foundations('/office');
+  assert.equal(f.members.toby.proof.question, 'customers');
+  assert.equal(f.members.toby.proof.without, 0.4);
+  assert.equal(f.members.toby.proof.with, 0.8);
+  assert.deepEqual(f.members.toby.missing, ['voice'], 'customers answered per the record');
+  assert.deepEqual(f.jobs.map((j) => [j.job, j.waiting]), [['marketing', ['voice']]]);
+  // The record says customers is no longer answered: it is missing again, and no proof shows.
+  answers = {};
+  const g = env.svc.foundations('/office');
+  assert.deepEqual(g.members.toby.missing.sort(), ['customers', 'voice']);
+  assert.equal(g.members.toby.proof, undefined);
+});
+
+test('early lines: most evidence first, at most three', () => {
+  // Value: protects=earliest orders by evidence and caps at EARLY_MAX; fails_when=the sort or the cap changes; why_new=only one early line was ever tested; seam=none; no_claim=which rules produce lines
+  const a = (id, evidence) => ({ id, evidence });
+  const r = earliest([a('x', { runs: 5 }), a('y', { decisions: 9, reopens: 1 }), a('z', { runs: 7 }), a('w', { reopens: 2 })]);
+  assert.deepEqual(r.map((x) => x.id), ['y', 'z', 'x']);
 });

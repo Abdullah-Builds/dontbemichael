@@ -60,8 +60,8 @@ test('the 1:1 remembers wide on its own, only its button changes it, and nothing
   assert.match(store, /try \{ window\.localStorage\.setItem\(LS_DOCK_WIDE, on \? '1' : '0'\); \} catch \{ \/\* noop \*\/ \}/);
   assert.equal(store.match(/localStorage\.setItem\(LS_DOCK_WIDE/g).length, 1, 'only setDockWide writes it');
   assert.doesNotMatch(store, /localStorage[^\n]*(centerClaim|SideForNow)/, 'the claim and Esc\'s side are never saved');
-  assert.match(store, /\{ dockOpen: false, dockFocus: undefined, dockSideForNow: false \}/, 'closing ends Esc\'s for now');
-  assert.match(store, /\? \{ dockOpen: true, dockFocus: focus, centerClaim: 'dock' \}/, 'opening the 1:1 claims the center');
+  assert.match(store, /\{ dockOpen: false, dockFocus: undefined, dockSideForNow: false, dockNavigation: s\.dockNavigation \+ 1 \}/, 'closing ends Esc\'s for now');
+  assert.match(store, /\? \{ dockOpen: true, dockFocus: focus, centerClaim: 'dock', dockNavigation: s\.dockNavigation \+ 1 \}/, 'opening the 1:1 claims the center');
   // Only the header button calls setDockWide.
   const callers = [];
   const walk = (dir) => {
@@ -103,7 +103,7 @@ test('wide, the conversation and box are drawn outside the office, beside the ri
 test('wide reads at 14 / 22 in a 720 px column, with no fold and tables at their own width', () => {
   // Value: protects=2A, 4A, 5A; fails_when=wide keeps the narrow size or fold, tables stretch across the bubble, or the box in the sheet shows the floating shadow; why_new=new styles; seam=source pins; no_claim=the look (checked in the running app)
   const dock = read('src/renderer/src/shell/MichaelDock.tsx');
-  assert.match(dock, /padding: '18px max\(16px, calc\(\(100% - 720px\) \/ 2\)\)'/);
+  assert.match(dock, /padding: wide \? '18px max\(16px, calc\(\(100% - 720px\) \/ 2\)\)' : '12px 13px'/);
   assert.match(dock, /fontSize: wide \? 14 : 12\.5, lineHeight: wide \? '22px' : '18px'/);
   assert.match(dock, /maxWidth: wide \? 'min\(84%, 560px\)' : '84%'/);
   assert.match(dock, /if \(!el \|\| open\) return;/, 'no fold measuring while wide');

@@ -47,6 +47,11 @@ export function claudeProjectsRoot(): string {
   return path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'projects');
 }
 
+/** The engine's prompt history, beside its projects folder. */
+export function engineHistoryFile(): string {
+  return path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'history.jsonl');
+}
+
 /** Every folder Claude Code may keep `cwd`'s conversations in: the current
  *  spelling and the older one, when it names a project. A reset removes both,
  *  where projectDir picks just one to read or write. */

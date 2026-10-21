@@ -35,7 +35,7 @@ Two data planes feed one renderer:
   sandboxed filesystem and git helpers.
 - **Hive / event plane.** `hive.ts` is the on-disk multi-agent layer; `hooks.ts` runs the hook
   server that provider bridges POST lifecycle payloads to (`cth-hook` for Claude Code, `agy-hook`
-  for Antigravity). `memory.ts` wraps the semantic memory CLI. The router delivers messages, drains
+  for Antigravity). `memory.ts` wraps the MemPalace CLI for search by meaning. The router delivers messages, drains
   provider outboxes, the GOD agent adjudicates, and idle/inbox wakeups keep workers draining mail.
 
 ## Project structure
@@ -49,7 +49,12 @@ src/
     hooks.ts                 hook server + provider hook shims (`cth-hook`, `agy-hook`); takes each frame's sender from its per start secret (HIVE_HOOK_SEAL, #61) and refuses frames without a valid one
     hookShell.ts             the shell Claude Code runs hooks and the status line in (bash, or PowerShell on Windows
                              without Git Bash), and each hook command written for it
-    memory.ts                semantic memory layer (CLI wrapper, degrade-to-noop)
+    memory.ts                search by meaning over company knowledge (MemPalace CLI wrapper, degrade-to-noop)
+    knowledge.ts / kg-core.cjs   company knowledge, the documents every member searches (docs/design/knowledge-graph.md);
+                             knowledgeEdits.ts reads a document in again when the owner saves it after Open in Settings
+    foundations.ts           Company foundations' one writer (docs/designs/office-foundations.md): the record in the
+                             private folder, the members' `foundations` route, the owner's card actions, and the copy
+                             it publishes into company knowledge
     config.ts                harness config persistence + home setup; Claude Code's ~/.claude.json (folder trust,
                              the first-run welcome, an approved API key), written to a copy and swapped in;
                              folder trust is keyed as Claude Code looks it up (forward slashes on Windows, claudeProjectKey);
@@ -61,7 +66,8 @@ src/
     telemetry.ts             live OTel collector + usage/cost feed for observability
     usage.ts / pricing.ts    UsageProvider seam + per-model cost attribution
     breaker.ts / control.ts  cost/runaway circuit breaker (steer/constrain/stop) + HITL gate / steer / stop
-    reflect.ts               MemoryReflector — memory condensation
+    memoryTidy.ts            the background tidy up of each agent's memory index: a cheap Haiku call turns the notes in
+                             memory/inbox.md into itemised changes, applied by shared/memoryIndex.ts (HIVE.md section 7)
     db.ts                    SQLite durable store (window bounds + history) + durable cost ledger + Pulse's
                              telemetry tables (telemetry_events and its rollups)
     telemetryStore.ts        Pulse's isolated store (docs/designs/team-performance.md): only the main process writes
@@ -77,10 +83,19 @@ src/
     shellEnv.ts              resolve PATH and shell env for child processes
     mail.ts                  IMAP/SMTP client for connected mailboxes; the broker calls it for md-mail tool calls
     integrationBroker.ts     loopback secret broker; answers md-mail calls, holds mailbox passwords, enforces Capabilities
+    brokerThrottle.ts        rate limits from connected apps: when one answers 429, or 503 with Retry-After, the broker stops
+                             calling it until the app's time is up; a short wait is held in the broker, a long one answered at
+                             once with when to try again (TODOS: third-party rate-limit backoff)
+    brokerWriteOnce.ts       send once for a connected app (issue #54, the rule mail already has): a write the broker
+                             forwards is recorded before it goes upstream, a repeat gets the first answer back, and one
+                             cut off by a stop is refused and the agent told to tell Michael
     mailApprovals.ts         Send on approval's store (mail-proposals.json in the app's data folder): emails waiting on
                              Ask me, the owner's decisions, standing approvals, Send only send records and pauses,
                              and the Sending changed notice that hands waiting emails back on Can send
                              (docs/designs/send-on-approval.md, shared-mailboxes.md; the rules are in shared/mailProposals.ts)
+    scheduleRequests.ts      team members' schedule requests: they go to Michael to approve or decline, and he passes one to
+                             the owner on Ask me only when the facts can't settle it; his own changes apply at once. Moved out
+                             of index.ts with everything it touches passed in, so tests run it with a fake config and hive
     standingCheck.ts         the separate quick check (hidden Claude, no tools) that an email fits a standing approval;
                              anything it can't read counts as no, so the email goes to the owner
     integrations.ts          the secret store: every saved password and key in one safeStorage-encrypted file
@@ -114,7 +129,9 @@ src/
     agentFolders.ts          each agent's folder under ~/Documents/<Business> (Michael's), plus the Office folder
     homeFolder.ts            office (harness home) folder checks behind the "can't find your office" screen
     harnessGuard.ts          PreToolUse guard that keeps agents from saving work in the harness folder
-    docText.ts / docTextCli.ts / macOcr.ts   Word, Excel, PowerPoint, PDF and scan reading (OCR via macOS Vision)
+    docText.ts / docTextCli.ts   Word, Excel, PowerPoint, PDF and scan reading; macOcr.ts reads scans and photos with
+                             macOS Vision, winOcr.ts with the OCR built into Windows (both through PowerShell or the
+                             system's own engine, no bundled Tesseract)
     claudeCliVersion.ts      installed Claude Code version, for the Opus 5.5 / Opus 5 model floor and the
                              Claude Code update notice (index.ts records each agent's started version)
     hireCheck.ts             the hire wizard's distinct job check (hidden Claude call, rules as fallback)
@@ -122,10 +139,62 @@ src/
                              hire wizard's "Suggest me" draft
     transcriptText.ts        reads a hidden Claude call's answer from its own session transcript
     screenAnswer.ts          reads a hidden Claude call's answer off its screen while it streams (a live preview)
+    hiddenClaude.ts          runs a hidden Claude session in a PTY of its own, never shown, and returns its answer; the trust
+                             layer calls it directly, the other background checks reach it through hiddenModel.ts
+    hiddenModel.ts           runs a background text check on Michael's engine: Claude through hiddenClaude.ts, Codex through
+                             `codex exec` with every tool off, any other engine refused so the caller keeps its fallback; the
+                             hire check, the memory tidy up, the standing check and the Work style helpers use it
+    workerWake.ts            wake watchdog in the main process: a worker idle at its prompt with unread inbox mail is nudged
+                             even when the window is throttled (#151)
+    workerLaunch.ts          a hired worker's spawn request as executable and argv, with the provider's own auto mode flag
+                             (a pure function, unit tested)
+    ptyEnv.ts                the environment an agent PTY starts with, layered as a pure function: the parent Claude session's
+                             identity stripped, then the app's defaults, then the agent's own
+    procKill.ts              ends a process tree, not only the direct child, so MCP servers and helpers an agent started are
+                             released with it
+    cliInstall.ts / nodeInstall.ts   the missing engine CLI install ladder (which installer can succeed on this machine),
+                             and installing Node.js itself
+    codexUsage.ts            token usage for a Codex agent, read from the rollout transcripts under its own CODEX_HOME
+                             (the telemetry fallback for Codex; transcript.ts knows only Claude's layout)
+    costLifetime.ts          lifetime cost recovered from cost-ledger.jsonl, since telemetry's counters start empty after
+                             a restart
+    modelCatalog.ts / hero.ts / fetchText.ts   the remote model catalog and the Settings hero card, fetched over https and
+                             cached, never fatal; fetchText.ts is the one https fetcher they share
+    analytics.ts             product analytics (PostHog), anonymous, allowlisted and governed by TELEMETRY.md; off in this
+                             build (COLLECT_USAGE_STATS)
+    updater.ts               auto update from GitHub releases through electron-updater: downloads in the background, installs
+                             only when the owner asks
+    restart.ts               restarts the app after a reset or a home change, and knows when a dev build cannot relaunch
+    roster.ts                the roster on disk: agents, notes, worktree paths, archived entries and parked message queues, one
+                             JSON file beside the hive (hive identity stays in registry.json)
+    officeFile.ts            <harnessHome>/office.json, the office's own record (shared/officeRecord.ts)
+    skills.ts                skills: the ones installed for each CLI on this machine, and a catalog of what could be
+    slack.ts / slack-trigger.cjs   Slack messages into Michael's queue over a bare http server that verifies every request
+                             with Slack's signing secret; the mention filter is plain CommonJS so tests require it
+                             directly. Off in this build (SHOW_SLACK)
+    webhook.ts / triggerHistory.ts   the secret gated inbound webhook API (many endpoints, one server, one tunnel) and
+                             the ledger of what came in and what was replied
+    hire.ts                  hire manifests from a dontbemichael:// link or a file, fetched behind an SSRF guard and validated
+                             (the spec is in shared/hire.ts)
+    pastes.ts                screenshots pasted into a composer, kept in the app's own folder so a queued message survives
+                             a restart
+    pathInside.ts            whether a path is a folder or sits below it, with the platform's own separators
+    docTextProcess.ts        reads a document in a process of its own, with a time limit, so a large or crafted file never
+                             freezes the window
+    palaceReap.ts            deletes the MemPalace segments its own recovery renamed aside and never removes
+    safeClearer.ts           clears a team member's conversation only when idle, safe and after a handoff, and so it can be
+                             undone (rules in shared/safeClear.ts)
+    terminalAtFolder.ts      opens a terminal window at a folder, per platform; off in this build (SHOW_OPEN_TERMINAL)
+    worktreeDeps.ts          links the base checkout's dependencies into an isolated worktree
+    realtime.ts / realtimeActions.ts / realtimeCompletionWatcher.ts / realtimeFloorWatcher.ts / realtimeCost.ts
+                             Realtime Michael, voice over OpenAI: the token mint, the voice action spine, the completion
+                             and floor watchers, and cost helpers. Off in this build (SHOW_VOICE)
+    freeflow.ts / groq.ts    Free Flow dictation through Groq Whisper (off in this build, SHOW_VOICE), and a Groq chat
+                             helper for the VDE editor's AI assist that nothing calls today
   shared/                    code both processes use
     buildFeatures.ts         switches for surfaces hidden in this build (git, IDE, temp workers, org trigger)
     agentProvider.ts         engine presets; BUILD_ENGINES is what setup offers (Claude Code today)
-    officePack.ts / officeRoles.ts / businessProfile.ts / teamPlan.ts   Office Pack schema, show roles, business profile, team plan
+    officePack.ts / officeRoles.ts / businessProfile.ts / teamPlan.ts   Office Pack schema, show roles and the department each member sits in (departmentOf), business profile, team plan
     agentDefinition.ts       each agent's levels and outward capabilities
     mailboxes.ts             mailbox and Capabilities types, providers, and mailAccess (the one mail rule,
                              Send only grants from another member's mailbox included: shared-mailboxes.md)
@@ -180,8 +249,11 @@ src/
                              shell network list everyone else's sandbox gets, Michael included
     teamPerformance.ts       Pulse's measures (docs/designs/team-performance.md); teamAdvice.ts its ways to save,
                              teamLearning.ts its Learning tiles, pulseSafety.ts its Kept safe tiles, pulseView.ts
-                             what the view receives; heldRecord.ts and checkedRecord.ts the rows of its held list
+                             what the view receives, pulseTiles.ts which tiles show and which fold into quiet chips
+                             (docs/designs/pulse-smart-view.md); heldRecord.ts and checkedRecord.ts the rows of its held list
                              and its privacy check lists (private/held.jsonl, private/checked.jsonl)
+    foundations.ts           Company foundations' questions per job, the record's shape, the document, each member's
+                             part, and Pulse's count (docs/designs/office-foundations.md)
     silentEngine.ts          the rules for a team member whose engine stops reporting to the app, and the card's
                              shape (branding/DESIGN.md 7.6b; the watch is main/silentWatch.ts)
     claudePlan.ts            the owner's Claude plan and its monthly price, for Pulse's costs on a plan
@@ -198,6 +270,8 @@ src/
                              Report cards (cleared with Got it); AskAnswerFields draws an ask's options and
                              several questions
     pulse/PulseView,         Pulse, the office's performance and cost view (branding/DESIGN.md 7.27)
+    FoundationCard,          a Company foundations question on Needs you (branding/DESIGN.md 7.27a)
+    KnowledgeDocList,        Settings > Memory & Knowledge: the company knowledge documents, each with Open
     GetMichaelReady,         setup's Ready step: the Claude Code and Claude account rows, and Use an API key;
                              EngineSetupCard puts the same rows on Ask me while Michael can't start
     MailProposalCards,       Ask me cards for emails waiting on approval (edit, Approve, Ask for changes, Don't send,

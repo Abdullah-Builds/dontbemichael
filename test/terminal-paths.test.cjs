@@ -175,3 +175,21 @@ test('a dotfile is named by its type: .gitignore, .env and .npmrc open as text',
   assert.equal(classifyPathToken('.env.local'), 'reveal');
   assert.equal(classifyPathToken('src/.eslintrc.json'), 'edit');
 });
+
+test('extensions longer than 8 characters match without truncation and classify correctly', () => {
+  // Bare properties file (10-char extension in EDIT_EXTS)
+  assert.deepEqual(tokensIn('check application.properties for db config'), ['application.properties']);
+  assert.equal(classifyPathToken('application.properties'), 'edit');
+
+  // Quoted path containing spaces and explicit path prefix
+  assert.deepEqual(tokensIn('saved "./My Docs/app.properties" in project'), ['./My Docs/app.properties']);
+  assert.equal(classifyPathToken('./My Docs/app.properties'), 'edit');
+
+  // Windows path with long extension
+  assert.deepEqual(tokensIn('configured C:\\proj\\settings.properties successfully'), ['C:\\proj\\settings.properties']);
+  assert.equal(classifyPathToken('C:\\proj\\settings.properties'), 'edit');
+
+  // Existing short extensions and version-like strings behave correctly
+  assert.deepEqual(tokensIn('built src/index.ts in v0.4.5 after 1.5 hours'), ['src/index.ts']);
+  assert.equal(classifyPathToken('src/index.ts'), 'edit');
+});

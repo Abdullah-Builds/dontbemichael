@@ -142,6 +142,13 @@ export function connectorGranted(cfg: ConnectorConfig, agentId: string, key: str
   return (caps?.connectors ?? []).includes(key);
 }
 
+/** Whether an agent reads mail through the Claude account's Gmail: switched
+ *  on in Settings and granted to it (schedules: "cannot check email"). */
+export function gmailConnectorOn(cfg: ConnectorConfig, agentId: string): boolean {
+  const keys = new Set([...Object.keys(cfg.connectorsOn ?? {}), ...(cfg.agentCapabilities?.[agentId]?.connectors ?? [])]);
+  return [...keys].some((key) => /^gmail$/i.test(key.trim()) && connectorOn(cfg, key) && connectorGranted(cfg, agentId, key, false));
+}
+
 /** The connectors an agent may use now: on the account, on in Settings,
  *  granted. Before any good read, none. */
 export function usableConnectors(cfg: ConnectorConfig, agentId: string, roleReadsBooks: boolean): ClaudeConnector[] {

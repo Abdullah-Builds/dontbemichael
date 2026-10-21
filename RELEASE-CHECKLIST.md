@@ -28,6 +28,7 @@ successful release never touches.
   as "New in vN" (a bold part must end in `.`, `!`, `?` or `,` to count), and the update toast
   starts from the same bullets. Put owner facing items first and bold only the ones the site
   should show; write fun, fixes and developer items as plain bullets after them.
+  `npm run check:leadins` (also in CI on `release/**`) fails on a bold part the site would skip.
 - [ ] **A hand edit to a published release body is also made in `RELEASE.md`.** The body is built
   from `RELEASE.md` at the tag (`tools/release-assets.cjs`), so re-running that tag's release
   workflow puts the tag's text back. Edit both, and do not re-run an old tag's workflow after.

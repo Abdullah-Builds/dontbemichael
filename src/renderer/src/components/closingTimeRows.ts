@@ -25,6 +25,12 @@ export function limitCombiningMarks(text: string, max = MAX_COMBINING_MARKS): st
   });
 }
 
+/** An agent's own words, made safe to quote: its quote marks become ' so it
+ *  can't close the quotes early. */
+function agentText(text: string): string {
+  return limitCombiningMarks(text).replace(/[“”„«»"]/g, "'");
+}
+
 /**
  * A waiting agent's row. `atPrompt` is the store's ACTION_AT_PROMPT marker and
  * `caption` its actionText, passed in so this stays free of the store module.
@@ -42,13 +48,28 @@ export function describeRow(
     : t('closingTime.stillWorking');
   // Idle and at-a-prompt already say it all in `state`; no second line. The
   // detail is the agent's own words, so it's quoted, not shown as the app's.
-  // Its own quote marks become ' so it can't close the quotes early.
   const what = a.status === 'idle' || a.action === atPrompt ? undefined
     : a.actionDetail === undefined ? caption(a.action, t)
-    : t('closingTime.agentWords', { text: limitCombiningMarks(a.actionDetail).replace(/[“”„«»"]/g, "'") });
-  const mins = a.actionAt ? Math.floor((now - a.actionAt) / 60_000) : 0;
-  const line = [what, mins >= 1 ? t('closingTime.minutes', { count: mins }) : ''].filter(Boolean).join(' · ') || undefined;
+    : t('closingTime.agentWords', { text: agentText(a.actionDetail) });
+  const line = [what, minutesSince(a.actionAt, now, t)].filter(Boolean).join(' · ') || undefined;
   return { state, line };
+}
+
+/** "7 min" since `at`, or '' under a minute or with no valid time. */
+function minutesSince(at: number | undefined, now: number, t: (key: string, opts?: Record<string, unknown>) => string): string {
+  const mins = at && Number.isFinite(at) ? Math.floor((now - at) / 60_000) : 0;
+  return mins >= 1 ? t('closingTime.minutes', { count: mins }) : '';
+}
+
+/** The last thing a waiting agent said (main reads it from its transcript),
+ *  quoted so it never reads as the app's own words, and how long ago. */
+export function saidLine(
+  said: { text: string; at?: number } | undefined,
+  now: number,
+  t: (key: string, opts?: Record<string, unknown>) => string
+): string | undefined {
+  if (!said?.text) return undefined;
+  return [t('closingTime.lastSaid', { text: agentText(said.text) }), minutesSince(said.at, now, t)].filter(Boolean).join(' · ');
 }
 
 /** The message a row shows after Remind or Close without them: none when it

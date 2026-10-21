@@ -5,7 +5,7 @@ import { MiniButton } from './triggers/ui';
 import { ACTION_AT_PROMPT, actionText, useStore, type Agent } from '@/store/store';
 import { useResolvedGodName } from '@/hooks/useResolvedGodName';
 import { CLOSING_TIME_REMIND_MS } from '@shared/closingTime';
-import { actionMessage, describeRow, headerLine } from './closingTimeRows';
+import { actionMessage, describeRow, headerLine, saidLine } from './closingTimeRows';
 
 /** Renderer-side closing-time view state. Mirrors the main process's
  *  ClosingTimeEvent phases, plus a local 'error' for a failed start. */
@@ -207,6 +207,21 @@ function ClosingTimeRows({ closing }: { closing: ClosingTimeState }) {
     const id = setInterval(() => setNow(Date.now()), 15_000);
     return () => clearInterval(id);
   }, []);
+  // The last thing each waiting agent said, read from its transcript in main,
+  // so a long job looks different from a stuck one.
+  const [said, setSaid] = useState<Record<string, { text: string; at?: number }>>({});
+  const waitingKey = (closing.waiting ?? []).join('\n');
+  useEffect(() => {
+    if (!waitingKey) return;
+    const ids = waitingKey.split('\n');
+    let live = true;
+    const read = (): void => {
+      window.cth.closingTimeSaid(ids).then((s) => { if (live) setSaid(s); }, () => { /* keep the last lines */ });
+    };
+    read();
+    const id = setInterval(read, SAID_POLL_MS);
+    return () => { live = false; clearInterval(id); };
+  }, [waitingKey]);
 
   const godId = closing.godId;
   if (!godId) return null;
@@ -266,6 +281,7 @@ function ClosingTimeRows({ closing }: { closing: ClosingTimeState }) {
               )}
             </div>
             {d.line && <div style={detailStyle}>{d.line}</div>}
+            {said[id] && <div style={detailStyle}>{saidLine(said[id], now, t)}</div>}
             {confirming === id && (
               <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
                 <span>{t('closingTime.confirmClose', { name: nameOf(id) })}</span>
@@ -304,6 +320,9 @@ function ClosingTimeRows({ closing }: { closing: ClosingTimeState }) {
     </div>
   );
 }
+
+/** How often the waiting rows' last lines are read again. */
+const SAID_POLL_MS = 10_000;
 
 const row: CSSProperties = { padding: '9px 0', borderTop: '1px solid var(--cth-line)', fontSize: 13, lineHeight: '19px', color: 'var(--cth-ink)' };
 /** Captions and status words (branding/DESIGN.md 4.2). */

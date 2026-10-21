@@ -49,6 +49,25 @@ test('a team member keeps only their cards, and combines with the search', () =>
   assert.equal(taskMatches(card(), { query: 'northwind', assignee: 'oscar' }), false);
 });
 
+test('an unassigned filter keeps only cards with no assignee', () => {
+  const f = { query: '', assignee: 'unassigned' };
+  assert.equal(filterActive(f), true);
+  assert.equal(taskMatches(card({ assignee: undefined }), f), true);
+  assert.equal(taskMatches(card({ assignee: 'kelly' }), f), false);
+});
+
+test('the search matches who the card is waiting on', () => {
+  assert.equal(taskMatches(card({ waitingOn: 'Legal approval' }), { query: 'legal', assignee: '' }), true);
+  assert.equal(taskMatches(card({ waitingOn: 'Legal approval' }), { query: 'accounting', assignee: '' }), false);
+});
+
+test('the search matches the assignee and the resolved team member name', () => {
+  assert.equal(taskMatches(card({ assignee: 'kelly' }), { query: 'kelly', assignee: '' }), true);
+  assert.equal(taskMatches(card({ assignee: 'agent_42' }), { query: 'kelly', assignee: '', nameFor: (id) => (id === 'agent_42' ? 'Kelly Kapoor' : undefined) }), true);
+  assert.equal(taskMatches(card({ assignee: 'agent_42' }), { query: 'kapoor', assignee: '', nameFor: (id) => (id === 'agent_42' ? 'Kelly Kapoor' : undefined) }), true);
+  assert.equal(taskMatches(card({ assignee: 'agent_42' }), { query: 'dwight', assignee: '', nameFor: (id) => (id === 'agent_42' ? 'Kelly Kapoor' : undefined) }), false);
+});
+
 test('the board filters every column and unfolds Done while filtering', () => {
   const src = read('src/renderer/src/components/TasksKanban.tsx');
   assert.match(src, /const shown = filtering \? tasks\.filter\(\(x\) => taskMatches\(x, filter\)\) : tasks;/);
@@ -56,8 +75,12 @@ test('the board filters every column and unfolds Done while filtering', () => {
   assert.match(src, /showAllDone \|\| filtering \? \[\.\.\.all\]\.reverse\(\)/);
   assert.match(src, /col\.key === 'done' && !filtering && all\.length > DONE_SHOWN/);
   assert.match(src, /\{shown\.filter\(\(x\) => x\.status === col\.key\)\.length\}/, 'header counts are of the matches');
+  assert.match(src, /aria-pressed=\{isSelected\}/, 'status count chips have aria-pressed');
   assert.match(src, /placeholder=\{t\('kanban\.search'\)\}/);
   assert.match(src, /<option value="">\{t\('kanban\.everyone'\)\}<\/option>/);
+  assert.match(src, /<option value="unassigned">\{t\('kanban\.unassigned'\)\}<\/option>/);
+  assert.match(src, /t\('kanban\.showingFiltered'/);
+  assert.match(src, /\{isFiltered \? t\('kanban\.noMatchingTasks'\) : t\(EMPTY_KEYS\[col\.key\], \{ godName \}\)\}/, 'a filtered empty column says no match, an unfiltered one its own line');
   const row = src.slice(src.indexOf('Find a card'), src.indexOf('{/* Columns */}'));
   assert.equal(row.match(/<select/g).length, 1, 'one picker, for the member: the columns are the statuses');
 });
@@ -65,7 +88,7 @@ test('the board filters every column and unfolds Done while filtering', () => {
 test('the new words exist in every language, with no dashes', () => {
   for (const loc of ['en', 'zh-CN', 'ar']) {
     const k = JSON.parse(read(`src/renderer/src/i18n/locales/${loc}.json`)).kanban;
-    for (const key of ['search', 'everyone', 'member']) {
+    for (const key of ['search', 'everyone', 'member', 'unassigned', 'showingFiltered', 'noMatchingTasks']) {
       assert.equal(typeof k[key], 'string', `${loc} kanban.${key}`);
       assert.doesNotMatch(k[key], /[–—]| - /, `${loc} kanban.${key}`);
     }

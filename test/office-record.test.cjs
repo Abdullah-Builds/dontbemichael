@@ -18,6 +18,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const loadTs = require('./load-ts.cjs');
+const { windowsOnly } = require('./platform.cjs');
 
 const rec = loadTs('src/shared/officeRecord.ts');
 const file = loadTs('src/main/officeFile.ts');
@@ -101,6 +102,75 @@ test('an office with no recorded business folder uses the one its team shares', 
   assert.deepEqual(rec.teamPlanFromRecord(null), { ok: false });
 });
 
+test('Windows drive paths share a business folder despite different casing', () => {
+  const windowsTeam = [
+    { agentId: 'oscar', folder: 'C:\\Biz\\Sales' },
+    { agentId: 'pam', folder: 'c:\\biz\\Support' }
+  ];
+  const record = rec.officeRecordFromRegistry({
+    oscar: { cwd: windowsTeam[0].folder },
+    pam: { cwd: windowsTeam[1].folder }
+  });
+  assert.equal(record.businessName, 'Biz');
+  const plan = rec.teamPlanFromRecord(record);
+  assert.equal(plan.ok, true);
+  assert.equal(plan.business, 'C:\\Biz', 'keep the first path\'s spelling');
+  assert.deepEqual(plan.team, windowsTeam);
+});
+
+test('Windows UNC paths share a business folder despite different casing', () => {
+  const windowsTeam = [
+    { agentId: 'oscar', folder: '\\\\Server\\Share\\Biz\\Sales' },
+    { agentId: 'pam', folder: '\\\\server\\share\\biz\\Support' }
+  ];
+  const record = rec.officeRecordFromRegistry({
+    oscar: { cwd: windowsTeam[0].folder },
+    pam: { cwd: windowsTeam[1].folder }
+  });
+  assert.equal(record.businessName, 'Biz');
+  const plan = rec.teamPlanFromRecord(record);
+  assert.equal(plan.ok, true);
+  assert.equal(plan.business, '\\\\Server\\Share\\Biz', 'keep the first UNC path\'s spelling');
+  assert.deepEqual(plan.team, windowsTeam);
+});
+
+test('slash-style UNC paths keep their spelling with a backslash-style registry peer', () => {
+  const team = [
+    { agentId: 'oscar', folder: '//Server/Share/Biz/Sales' },
+    { agentId: 'pam', folder: '\\\\server\\share\\biz\\Support' }
+  ];
+  const record = rec.officeRecordFromRegistry({
+    oscar: { cwd: team[0].folder },
+    pam: { cwd: team[1].folder }
+  });
+  assert.equal(record.businessName, 'Biz');
+  assert.equal(rec.teamPlanFromRecord(record).business, '//Server/Share/Biz');
+});
+
+test('a UNC server or share root is not a business folder', () => {
+  for (const folders of [
+    ['\\\\Server\\ShareA\\Sales', '\\\\server\\ShareB\\Support'],
+    ['\\\\Server\\Share\\Sales', '\\\\server\\share\\Support']
+  ]) {
+    const record = rec.officeRecordFromRegistry({
+      oscar: { cwd: folders[0] },
+      pam: { cwd: folders[1] }
+    });
+    assert.equal(record.businessName, undefined);
+    assert.deepEqual(rec.teamPlanFromRecord(record), { ok: false });
+  }
+});
+
+test('POSIX path segments remain case-sensitive when finding a shared folder', () => {
+  assert.deepEqual(rec.teamPlanFromRecord({
+    version: 1,
+    team: [
+      { agentId: 'oscar', folder: '/Biz/Sales' },
+      { agentId: 'pam', folder: '/biz/Support' }
+    ]
+  }), { ok: false });
+});
+
 // --- the file, on disk -------------------------------------------------------
 
 function office() {
@@ -149,6 +219,33 @@ test('finding an office: its own record first, its registry for an older office,
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
     fs.rmSync(empty, { recursive: true, force: true });
+  }
+});
+
+test('an older Windows office keeps its team when registry paths differ in case', windowsOnly('Windows drive paths ignore case on disk'), () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'office-'));
+  const business = fs.mkdtempSync(path.join(os.tmpdir(), 'Biz Office-'));
+  try {
+    fs.mkdirSync(path.join(business, 'Sales'));
+    fs.mkdirSync(path.join(business, 'Support'));
+    fs.mkdirSync(path.join(home, 'hive'));
+    const sales = path.join(business, 'Sales');
+    const support = path.join(business.toLowerCase(), 'Support');
+    fs.writeFileSync(path.join(home, 'hive', 'registry.json'), JSON.stringify({
+      agents: { oscar: { cwd: sales }, pam: { cwd: support } }
+    }));
+
+    const found = file.findOffice(home);
+    assert.equal(found.source, 'registry');
+    assert.equal(found.record.businessFolder, business);
+    assert.deepEqual(found.record.team, [
+      { agentId: 'oscar', folder: sales },
+      { agentId: 'pam', folder: support }
+    ]);
+    assert.equal(rec.teamPlanFromRecord(found.record).business, business);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(business, { recursive: true, force: true });
   }
 });
 

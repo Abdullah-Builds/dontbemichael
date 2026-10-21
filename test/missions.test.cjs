@@ -246,6 +246,13 @@ test('parseWhen reads intervals and day lists', () => {
   assert.equal(M.parseWhen({ every: '0m' }), null);
   assert.equal(M.parseWhen({ every: 'soon' }), null);
   assert.equal(M.parseWhen({ days: ['someday'], at: '09:00' }), null);
+  assert.deepEqual(M.parseWhen({ days: ['tues', 'THURS'], at: '09:00' }).weekly, { days: [2, 4], minute: 540 });
+  assert.equal(M.parseWhen({ days: ['monthly'], at: '09:00' }), null);
+  assert.equal(M.parseWhen({ days: ['month-end'], at: '09:00' }), null);
+  assert.equal(M.parseWhen({ days: ['sunset'], at: '09:00' }), null);
+  assert.equal(M.parseWhen({ days: ['mo'], at: '09:00' }), null);
+  assert.deepEqual(M.parseWhen({ days: ['Mondays', 'weds', 'fri.'], at: '09:00' }).weekly, { days: [1, 3, 5], minute: 540 });
+  assert.deepEqual(M.parseWhen({ days: ['mon.', 'Sundays'], at: '09:00' }).weekly, { days: [0, 1], minute: 540 });
   assert.equal(M.parseWhen({ days: ['mon'], at: '25:00' }), null);
   assert.equal(M.parseWhen(null), null);
 });

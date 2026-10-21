@@ -60,6 +60,19 @@ test('the chip replaces exactly the path, from the source, in text, code spans a
   assert.deepEqual(chips('Saved to C:/Reports/q3.csv. See [notes](D:/Reports/notes.md).').out,
     ['C:/Reports/q3.csv', 'D:/Reports/notes.md'], 'Windows forward slash paths become chips in prose and links');
   assert.deepEqual(chips('See [site](https://example.com/C:/Reports/q3.csv).').out, [], 'a URL containing a drive path stays a link');
+  for (const md of [
+    'See [report](/Users/me/Q3(final)/report.md)',
+    'See [report](/Users/me/Q3\\(final\\)/report.md "review")',
+    'See [report](C:\\Reports\\_q3.md)',
+    'See [report](/Users/me/report.md\n "Q3")',
+    'See [report](</Users/me/Harbor & Pine/Q3 (final)/report.md>)'
+  ]) {
+    assert.deepEqual(askFilePaths(md), chips(md).out, 'paths checked by main match rendered chip paths');
+  }
+  for (const depth of [32, 33]) {
+    const md = `See [report](/Users/me/Q3${'('.repeat(depth)}final${')'.repeat(depth)}/report.md)`;
+    assert.deepEqual(askFilePaths(md), chips(md).out, `destination nesting depth ${depth} matches the renderer`);
+  }
   assert.deepEqual(chips('```\n/Users/me/skip.md\n```').out, [], 'code fences stay code');
   // 2026-10-11: Michael wrote **... 10 Oct (`/path/report.md`).** and the chip
   // wrapped to its own line, stranding "(" above it and ")." below it.

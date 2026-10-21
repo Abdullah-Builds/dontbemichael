@@ -99,6 +99,26 @@ export const OPS_STANDUP_MISSION: ScheduledMission = {
   // NO autoCompact. Compaction belongs to contextTrigger.compact and nothing else.
 };
 
+/** Company foundations check (office-foundations.md, eng D3): once a week,
+ *  Michael brings each empty question the work hit back to the owner. Its how
+ *  is in his instructions ("Company foundations"); the focus says this run. */
+export const FOUNDATIONS_CHECK_FOCUS =
+  'For each empty question in the company foundations that the work hit: if its foundation card is open, ' +
+  'set its ask\'s askedAt to now so it comes back to the top of Ask me; if none is open, raise one. ' +
+  'Raise nothing for a question no work has hit, and nothing when every hit question is answered.';
+
+export const FOUNDATIONS_CHECK_MISSION: ScheduledMission = {
+  id: 'foundations-check',
+  label: 'Foundations check',
+  intervalMs: 7 * 86_400_000,
+  // Mondays at 9:00.
+  weekly: { days: [1], minute: 9 * 60 },
+  to: 'god',
+  body: '',
+  focus: FOUNDATIONS_CHECK_FOCUS,
+  enabled: true
+};
+
 /** Standup prompts the app itself shipped. An office still carrying one of
  *  them word for word gets the current (empty) body at launch, because its
  *  content now lives in the standup's focus area; text the owner wrote is kept. */
@@ -142,6 +162,16 @@ export const HEARTBEAT_MISSION: ScheduledMission = {
   kind: 'heartbeat',
   quietThresholdMs: 300_000
 };
+
+/** What a heartbeat sends Michael: the summary, with the owner's text from the
+ *  heartbeat box ahead of it when the owner wrote some. The shipped default is
+ *  not sent: it says the team has gone quiet and points to a digest in the
+ *  inbox, which is wrong on a beat for waiting mail and when the digest is in
+ *  the same message. */
+export function heartbeatMessage(body: string | undefined, digest: string): string {
+  const own = body?.trim();
+  return own && own !== HEARTBEAT_MISSION.body.trim() ? `${own}\n\n${digest}` : digest;
+}
 
 /** The dedicated auto-compact MAINTENANCE schedule (maint-1). DECOUPLED from the
  *  ops standup so editing/replacing a standup can never silently disable
@@ -196,11 +226,12 @@ export interface CircuitBreakerConfig {
 
 /** Company knowledge (the Knowledge Graph store + agent access tool).
  *  The owner adds their own documents, sheets, PDFs and images; agents search
- *  them on demand via the `kg` CLI and MemPalace. On by default (owner,
- *  2026-09-25); `enabled` still gates everything (no env injected, no prompt
- *  line, no palace indexing when off). See docs/design/knowledge-graph.md. */
+ *  them on demand via the `kg` CLI and MemPalace. Always on since 2026-10-19
+ *  (owner: no switch); members are pointed at it while it holds a document.
+ *  See docs/design/knowledge-graph.md. */
 export interface KnowledgeGraphConfig {
-  /** Master switch. Default true (DEFAULT_CONFIG); the owner can turn it off in Settings. */
+  /** The old switch. Company knowledge has no switch since 2026-10-19 (owner);
+   *  an office whose owner had set this false is told once (knowledgeOnNoticeSeen). */
   enabled?: boolean;
   /** Override the store location. Unset = <userData>/knowledge. */
   rootPath?: string;
@@ -322,8 +353,6 @@ export interface HarnessConfig {
   /** One-time guard: the old QuickBooks and "Your Claude account" choices were
    *  carried over to the connector list (owner, 2026-10-02, D9). */
   connectorsMigrated?: boolean;
-  /** Enable semantic memory (MemPalace CLI). No-op if mempalace isn't installed. */
-  semanticMemory: boolean;
   /** Embedding model for the palace: lightweight 'minilm' or multilingual 'embeddinggemma'. */
   embeddingModel: 'minilm' | 'embeddinggemma';
   /** Recurring auto-dispatch missions handled by the scheduler. */
@@ -337,6 +366,9 @@ export interface HarnessConfig {
   /** One-time guard: has the built-in hourly ops standup been seeded into an
    *  existing install's missions? Prevents re-adding it after a user deletes it. */
   opsStandupSeeded?: boolean;
+  /** One-time guard: the weekly Foundations check was added (office-foundations.md);
+   *  an owner who deletes it keeps it deleted. */
+  foundationsCheckSeeded?: boolean;
   /** One-time guard: the standup got its focus area (schedule-focus-areas.md
    *  F6). An owner who later edits or clears it keeps their choice. */
   standupFocusSeeded?: boolean;
@@ -347,10 +379,13 @@ export interface HarnessConfig {
    *  (michael-replies.md, R4). Read once, moved to userData/owner-dock-keys.json,
    *  then cleared. */
   ownerDockKeys?: string[];
-  /** One-time guard: the knowledge feature was switched on for this install
-   *  when it became the company knowledge store (2026-09-25). An owner who
-   *  turns it off afterwards keeps it off. */
+  /** Legacy one-time guard (2026-09-25): the old switch was turned on once for
+   *  this install. The switch is gone; an `enabled` false left by an owner who
+   *  turned it off later only brings the one time knowledge notice. */
   knowledgeOnSeeded?: boolean;
+  /** The one time card telling an owner who had company knowledge off that it
+   *  has no switch now and its documents are searchable was read. */
+  knowledgeOnNoticeSeen?: boolean;
   /** One-time guard for the built-in heartbeat mission (mirrors opsStandupSeeded
    *  so a user who deletes the heartbeat doesn't get it re-added every boot). */
   heartbeatSeeded?: boolean;
@@ -543,7 +578,6 @@ const DEFAULTS: HarnessConfig = {
   workerIdleTimeoutMinutes: 20,
   integrations: [],
   defaultWorkerTokenCap: 0, // 0 = unlimited (human directive: NO per-worker cap)
-  semanticMemory: true,
   embeddingModel: 'minilm',
   missions: [OPS_STANDUP_MISSION],
   notifications: false,

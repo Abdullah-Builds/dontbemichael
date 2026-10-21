@@ -9,6 +9,7 @@ import { isComposingKey } from '@shared/imeGuard';
 import { GrowingTextarea } from '@/components/GrowingTextarea';
 import { attachmentsFromPaste } from '@/components/pasteAttachments';
 import { MichaelDock, useOwnerDock, type DockView } from './MichaelDock';
+import type { DockPlace } from './useDockScroll';
 import { sendToMichael } from './ownerSend';
 import { DOCK_CENTER_ID, dockEscAction } from './wideCenter';
 import { PANEL_MOVE_MS } from './Dialog';
@@ -68,7 +69,7 @@ function TalkToMichael() {
   const centered = wide && !!host;
   const [expanded, setExpanded] = useState<Record<string, true>>({});
   const [showEarlier, setShowEarlier] = useState(false);
-  const anchor = useRef<string | null>(null);
+  const anchor = useRef<DockPlace | null>(null);
   useEffect(() => { if (!dockOpen) anchor.current = null; }, [dockOpen]);
   const view: DockView = { expanded, setExpanded, showEarlier, setShowEarlier, anchor };
   // After a move the box has the focus, at the end of its text.

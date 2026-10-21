@@ -14,9 +14,11 @@
   <img src="./branding/reference/studio/home-light.png" alt="The office: a pod for each department around Michael's glass office, and the Needs you board on the right with what waits on you" width="1240">
 </picture>
 
-Pick your kind of business, pick your team, and Michael, your office manager, runs the office
-while you run the business. Every team member is an AI agent with a job, its own folder and its
-own memory, working on your computer.
+Pick your kind of business and choose your team. Michael, your office manager, runs the office
+while you run the business.
+
+Every team member is an AI agent with a clear job, its own folder, and its own memory. Everything
+runs on your computer.
 
 <p>
   <a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-FF6B6B.svg?style=flat-square&labelColor=1A1320"></a>
@@ -39,10 +41,10 @@ own memory, working on your computer.
 > brings you only the calls that need you.
 
 > [!TIP]
-> **New in 0.2.3: the office clocks in, and Waiting cards come back.**
-> A card shows your team arriving as the office opens. A card waiting on a customer or supplier
-> gets a check back time, Michael follows up, and after two follow ups with no reply he asks you.
-> Pulse lists what the team learned, and you can run a scheduled job now. In 0.2.2, Pulse arrived.
+> **New in 0.2.4: Company foundations, and company knowledge you can open.**
+> One document holds what each job needs to know about your business; when work needs an empty
+> answer, a card asks you once. Settings lists every document your team searches, and you can open
+> and edit one in your own app. In 0.2.3, the office clocks in and Waiting cards come back.
 
 ## Contents
 
@@ -61,19 +63,21 @@ own memory, working on your computer.
 ## What it is
 
 Don't Be Michael is a desktop app that runs a small office of AI team members for your business.
-Each team member is a [Claude Code](https://claude.com/claude-code) agent with a role: finance,
-customer support, sales, marketing and so on. Michael is the office manager. You talk to him; he
-routes the work, answers the team's questions, and asks you only when something needs your
-decision.
+
+Each team member is a [Claude Code](https://claude.com/claude-code) agent with a specific role
+(finance, customer support, sales, marketing, and more). Michael is the office manager. You talk
+to him. He routes the work, answers the team's questions, and only brings you the decisions that
+need your attention.
 
 Everything runs on your computer, on the Claude plan you already have. Each team member has a
-desk in an office you can watch, a pod for each department around Michael's glass office, so you
-can see who is working on what.
+desk in an office you can watch, with a pod for each department around Michael's glass office, so
+you can see who is working on what.
 
 ## Your team
 
-Setup asks for your business and your kind of business, then suggests a team from that business's
-Office Pack. You pick who joins, and you can hire more later.
+During setup, you tell the app your business name and the kind of business you run. It then
+suggests a starting team from that business type's Office Pack. You choose who joins, and you can
+hire more team members later.
 
 | Kind of business | Suggested team |
 |---|---|
@@ -254,7 +258,8 @@ and signs you in where you can see it, or takes an Anthropic API key instead.
 
 **Your business, known to everyone**
 - **Company profile.** Your business name, owner, address, hours, time zone, currency and more, given to every team member. Change it in Settings.
-- **Company knowledge.** Add your documents and policies in Memory & Knowledge: Word, Excel, PowerPoint, PDF, and scans or photos (on a Mac or a Windows PC). Every team member can search them by words, and by meaning when MemPalace is installed, so "money back" finds your refund policy.
+- **Company knowledge.** Add your documents and policies in Memory & Knowledge: Word, Excel, PowerPoint, PDF, and scans or photos (on a Mac or a Windows PC). Every team member can search them by words, and by meaning when MemPalace is installed, so "money back" finds your refund policy. Open one to read or change it in your own app; when you save, the team searches the new version.
+- **Company foundations.** One document of what each job needs to know about your business, such as who you sell to or your financial year. When a team member's work needs an answer that is still empty, Michael asks you for it on Needs you, weekly until it is answered, and what you teach the team fills it in too.
 
 **Private folders**
 - Michael works in your business folder, and each team member works in its own folder inside it.

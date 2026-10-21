@@ -22,7 +22,7 @@ import type { ControlRegistry } from './control';
 import type { CircuitBreaker } from './breaker';
 import { estimateCostUsd } from './pricing';
 import { claudeProjectsRoot, projectDir } from './transcript';
-import { HOOK_PATH_UNCHECKED, HOOK_SENDER_UNCHECKED, MAX_HOOK_FRAME_BYTES, TERMINAL_PROMPT_TYPES, isTerminalPrompt, validateHookEvent } from '../shared/hookEvents';
+import { HOOK_PATH_UNCHECKED, HOOK_SENDER_UNCHECKED, MAX_HOOK_FRAME_BYTES, TERMINAL_PROMPT_TYPES, batchToolUseIds, isTerminalPrompt, validateHookEvent } from '../shared/hookEvents';
 export { TERMINAL_PROMPT_TYPES, isTerminalPrompt };
 import { resolveGodName } from '../shared/godIdentity';
 import { ownValue } from '../shared/ownValue';
@@ -97,7 +97,7 @@ import { isQuickBooksConnectorTool, isQuickBooksResourceCall, quickbooksAccess, 
 import type { QuickBooksApprovals } from './quickbooksApprovals';
 import { handoffContext } from '../shared/safeClear';
 import { ownerQuestionsContext, ownerRequestsContext, stuckCardsContext } from '../shared/ownerRequests';
-import { lastAssistantText } from './transcriptText';
+import { lastAssistantLine, lastAssistantText, type SaidLine } from './transcriptText';
 import { stopReasonFor, type OfficeStopReason } from '../shared/officeBreak';
 import { RESTARTED_NOTE } from '../shared/upkeep';
 
@@ -140,6 +140,8 @@ interface HookPayload {
   /** Set by the hook program when it cut a call's long fields to fit a frame. */
   tool_input_trimmed?: boolean;
   tool_use_id?: string;
+  /** PostToolBatch only: the batch's calls, sent by the hook program with only their ids. */
+  tool_calls?: unknown;
   stop_hook_active?: boolean;
   prompt?: string;
   source?: string;
@@ -184,6 +186,7 @@ export class HookServer {
   /** The company profile last delivered to each agent's session: same once per
    *  session, again on change, rule as the goal. */
   private deliveredProfileByAgent = new Map<string, { sessionId: string | null; text: string | null }>();
+  private deliveredFoundationsByAgent = new Map<string, { sessionId: string | null; text: string | null }>();
   /** What roster each agent's session was last given, so it is sent again only on a change. */
   private deliveredRosterByAgent = new Map<string, { sessionId: string | null; layoutKey: string; statusKey: string }>();
   /** The session each agent was last given its memory index in. */
@@ -278,6 +281,10 @@ export class HookServer {
      *  grants (issue 320). Optional so tests can omit it: a change that needs
      *  the owner's OK is then refused outright. */
     private quickbooksApprovals?: QuickBooksApprovals
+    /** Company foundations as this agent reads them (office-foundations.md):
+     *  its job's section, the whole document for Michael, or null. Optional
+     *  so tests can omit it. */
+    private getFoundations?: (agentId: string) => string | null
   ) {}
 
   start(): void {
@@ -454,6 +461,17 @@ export class HookServer {
   /** The transcript file of an agent's CURRENT session, if any hook has fired. */
   transcriptPath(agentId: string): string | undefined {
     return this.transcriptPaths.get(agentId);
+  }
+
+  /** The last thing this agent said, as one safe line, and when, for its
+   *  closing-time row. Read only from a transcript in the engine's own folder: the path
+   *  comes from a hook frame, which an agent could write. */
+  latestLine(agentId: string): SaidLine | undefined {
+    const file = this.transcriptPaths.get(agentId);
+    if (!file || !isClaudeTranscript(file)) return undefined;
+    const said = lastAssistantLine(file);
+    const text = said ? safeLine(said.text) : undefined;
+    return text ? { ...said, text } : undefined;
   }
 
   /** The latest context-window accounting for an agent (current tokens + the real
@@ -949,6 +967,25 @@ export class HookServer {
       }
     }
 
+    // Company foundations (office-foundations.md, eng D1): the member's job
+    // section, or the whole document for Michael, delivered like the profile:
+    // at the start of each session and again when it changes. Never to
+    // Research (eng finding 1).
+    let foundations: string | null = null;
+    if ((event === 'SessionStart' || event === 'UserPromptSubmit') && agentId && this.getFoundations && !isResearchAgent) {
+      let text: string | null = null;
+      try { text = this.getFoundations(agentId); } catch { text = null; }
+      const sessionId = p.session_id ?? null;
+      const delivered = this.deliveredFoundationsByAgent.get(agentId);
+      const fresh = event === 'SessionStart' || !delivered || delivered.sessionId !== sessionId;
+      if (fresh || delivered.text !== text) {
+        this.deliveredFoundationsByAgent.set(agentId, { sessionId, text });
+        if (text) foundations = text;
+        // Silence would leave the old section alive in the model's context.
+        else if (!fresh && delivered?.text) foundations = 'COMPANY FOUNDATIONS. Your job no longer has a company foundations section; the answers given earlier no longer apply to your work.';
+      }
+    }
+
     // The agent's memory index (owner, 2026-09-25): once at the start of each
     // session, and never again within it, so it stays in the prompt cache. The
     // tidy-up's changes arrive with the next session.
@@ -993,12 +1030,12 @@ export class HookServer {
       ? this.hive.knowledgeUpdate(agentId, this.getKnowledge())
       : null;
 
-    if (steer || roster || goal || knowledgeNote || profile || memoryIndex || handoff || ownerRequests || ownerQuestions || stuckCards) {
+    if (steer || roster || goal || knowledgeNote || profile || foundations || memoryIndex || handoff || ownerRequests || ownerQuestions || stuckCards) {
       this.emit(agentId, event, p);
       return {
         hookSpecificOutput: {
           hookEventName: event,
-          additionalContext: [roster, profile, memoryIndex, handoff, goal, knowledgeNote, ownerRequests, ownerQuestions, stuckCards, steer].filter(Boolean).join('\n\n')
+          additionalContext: [roster, profile, foundations, memoryIndex, handoff, goal, knowledgeNote, ownerRequests, ownerQuestions, stuckCards, steer].filter(Boolean).join('\n\n')
         }
       };
     }
@@ -1326,6 +1363,7 @@ export class HookServer {
       event,
       tool: p.tool_name,
       toolUseId: typeof p.tool_use_id === 'string' ? p.tool_use_id : undefined,
+      toolUseIds: event === 'PostToolBatch' ? batchToolUseIds(p.tool_calls) : undefined,
       notificationType: p.notification_type,
       source: p.source,
       message: p.message,
@@ -1385,10 +1423,16 @@ const TOOL_LINE_MAX = 80;
  *  agent cannot disguise the line the owner decides by. */
 export function toolLine(tool: unknown, input: unknown): string | undefined {
   const d = toolDetail(tool, input);
-  if (!d) return undefined;
+  return d ? safeLine(d) : undefined;
+}
+
+/** Any agent text as one line the owner may read: redacted, without control
+ *  or invisible characters, at most 80 characters (toolLine, and the last
+ *  thing an agent said on its closing-time row). */
+export function safeLine(text: string): string | undefined {
   // Invisible format characters are removed, not spaced, so one hidden
   // inside a token cannot split it past redaction.
-  const plain = d.replace(/\p{Cf}+/gu, '').replace(/\p{Cc}+/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, TOOL_LINE_SCAN_MAX);
+  const plain = text.replace(/\p{Cf}+/gu, '').replace(/\p{Cc}+/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, TOOL_LINE_SCAN_MAX);
   // Cut by code point so an emoji is never split in half.
   const redacted = redactSecrets(plain);
   if (/-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/.test(redacted)) return undefined;

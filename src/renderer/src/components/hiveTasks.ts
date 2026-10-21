@@ -32,6 +32,10 @@ export interface HumanQA {
   picked?: number;
   /** Each question's answer, null where the owner left it unanswered. */
   partAnswers?: (string | null)[];
+  /** "report", or "foundation" for a Company foundations card. */
+  kind?: string;
+  /** A foundation card's question id (shared/foundations.ts). */
+  foundation?: string;
 }
 
 export interface HiveTask {
@@ -232,8 +236,12 @@ export function resultHeadline(result: string | undefined): string {
 }
 
 /** The Tasks board's filter (issue 158): what the owner typed and one team
- *  member ('' for everyone). */
-export interface TaskFilter { query: string; assignee: string }
+ *  member ('' for everyone, 'unassigned' for cards with no assignee). */
+export interface TaskFilter {
+  query: string;
+  assignee: string;
+  nameFor?: (id?: string) => string | undefined;
+}
 
 /** Is either part of the filter set? While it is, the board unfolds Done. */
 export function filterActive(f: TaskFilter): boolean {
@@ -241,11 +249,30 @@ export function filterActive(f: TaskFilter): boolean {
 }
 
 /** Does a card pass the filter? Every typed word must appear, in any case, in
- *  the card's id, title, description or result; a member must be its assignee. */
-export function taskMatches(task: HiveTask, f: TaskFilter): boolean {
-  if (f.assignee && task.assignee !== f.assignee) return false;
+ *  the card's id, title, description, result, waiting on, or assignee; a member
+ *  must be its assignee (or unassigned). */
+export function taskMatches(
+  task: HiveTask,
+  f: TaskFilter,
+  nameFor?: (id?: string) => string | undefined
+): boolean {
+  if (f.assignee === 'unassigned') {
+    if (task.assignee) return false;
+  } else if (f.assignee && task.assignee !== f.assignee) {
+    return false;
+  }
   const words = f.query.toLowerCase().split(/\s+/).filter(Boolean);
   if (!words.length) return true;
-  const text = [task.id, task.title, task.description, task.result].filter(Boolean).join(' ').toLowerCase();
+  const resolve = f.nameFor ?? nameFor;
+  const memberName = resolve ? resolve(task.assignee) : undefined;
+  const text = [
+    task.id,
+    task.title,
+    task.description,
+    task.result,
+    task.waitingOn,
+    task.assignee,
+    memberName
+  ].filter(Boolean).join(' ').toLowerCase();
   return words.every((w) => text.includes(w));
 }

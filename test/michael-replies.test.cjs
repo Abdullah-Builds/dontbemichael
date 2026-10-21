@@ -365,13 +365,16 @@ test('More opens only the reply it sits under, even when replies share an id', (
   assert.equal(new Set(keys).size, keys.length, 'every item has its own key');
   const dock = read('src/renderer/src/shell/MichaelDock.tsx');
   assert.match(dock, /const keys = dockKeys\(dock\.items\);/, 'keyed over the whole conversation, not only what shows');
-  assert.match(dock, /<ReplyBubble key=\{key\}[^\n]*\n\s*expanded=\{!!expanded\[key\]\} onMore=\{\(\) => setExpanded\(\(e\) => \(\{ \.\.\.e, \[key\]: true \}\)\)\}/);
+  assert.match(dock, /<ReplyBubble key=\{key\}[^\n]*\n\s*expanded=\{!!expanded\[key\]\} onMore=\{\(\) => \{ scroll\.pauseForExpansion\(\); setExpanded\(\(e\) => \(\{ \.\.\.e, \[key\]: true \}\)\); \}\}/);
+  assert.match(dock, /const rowOf = \(it: DockItem\) => \(\{ key: keyOf\.get\(it\)/, 'the scroll hook tracks rows by the same keys');
   assert.doesNotMatch(dock, /expanded\[it\.id\]|key=\{it\.id\}/, 'never keyed by the raw message id');
-  // More leaves the scroll alone, so the spot clicked stays in view: the list
-  // scrolls only on open, on a move to or from the center, and on the quote.
-  assert.match(dock, /if \(kept\) \{ scrollListTo\(el, kept, 'start'\); return; \}/);
+  // More keeps the spot clicked in view: it stops following the latest, and
+  // the list then holds the passage being read (useDockScroll.ts).
+  const hook = read('src/renderer/src/shell/useDockScroll.ts');
+  assert.match(hook, /pauseForExpansion: \(\) => \{\n\s*following\.current = false;/);
   // scrollIntoView scrolls clipped ancestors too and hid the wide sheet's header.
   assert.doesNotMatch(dock, /scrollIntoView/);
+  assert.doesNotMatch(hook, /scrollIntoView/);
 });
 
 test('the app makes every message id, and the sent copy records it', async (t) => {

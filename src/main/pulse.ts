@@ -15,15 +15,16 @@
 import type Database from 'better-sqlite3';
 import type { ScheduledMission } from '../shared/missions';
 import {
-  compareFrom, dayKey, keptAsIs, measuredSaving, periodRange, planHeadroom, previousRange, pulseSnapshot,
+  compareFrom, dayKey, keptAsIs, measuredSaving, MIN_DECISIONS, periodRange, planHeadroom, previousRange, pulseSnapshot,
   type AskFact, type DayRange, type Period, type PlanReading, type PulseSnapshot
 } from '../shared/teamPerformance';
-import { adviceFor, visibleAdvice, ADVICE_WINDOW_MS, type Advice, type Dismissal, type LadderModel, type MissionFact } from '../shared/teamAdvice';
+import { adviceFor, visibleAdvice, ADVICE_WINDOW_MS, EARLY_SCALE, type Advice, type Dismissal, type EarlyMode, type LadderModel, type MissionFact } from '../shared/teamAdvice';
 import { keptSafe, type KeptSafe } from '../shared/pulseSafety';
 import { planCostFor, scaleSnapshot, type PlanPrice } from '../shared/claudePlan';
 import { countFromDay, learnedNotes, learning, type AddedNote, type LearnedNote, type NoteFact } from '../shared/teamLearning';
 import { parseHeld, type HeldRow } from '../shared/heldRecord';
 import { parseChecked, type CheckedList, type CheckedRow } from '../shared/checkedRecord';
+import { countFor, foundationsPulse, replayFoundations, type FoundationEvent, type FoundationJob, type FoundationsPulse } from '../shared/foundations';
 import type { TelemetryStore } from './telemetryStore';
 import type { TelemetryProcessor } from './telemetryProcessor';
 
@@ -52,6 +53,11 @@ export interface PulseDeps {
   /** private/checked.jsonl, the lists of what the check let through or stopped. */
   readChecked?: () => string | Promise<string>;
   now?: () => number;
+  /** Each member's job, for Company foundations (office-foundations.md). */
+  memberJobs?: () => Record<string, FoundationJob[]>;
+  /** The foundations record's answers: what is answered now, whatever the
+   *  events say (an event can be lost or pruned). */
+  foundationsAnswers?: () => Partial<Record<string, { at: string }>>;
 }
 
 export type { AppliedChange, PulseView } from '../shared/pulseView';
@@ -60,6 +66,14 @@ import type { AppliedChange, PulseView } from '../shared/pulseView';
 /** Window lengths by Claude Code's rate limit names. */
 function windowMs(name: string): number {
   return /five_hour|5h/i.test(name) ? 5 * 3_600_000 : 7 * 86_400_000;
+}
+
+/** At most this many early lines, the most evidence first. */
+export const EARLY_MAX = 3;
+/** The early lines to show: the most evidence first, at most EARLY_MAX. */
+export function earliest(all: Advice[]): Advice[] {
+  const weight = (a: Advice): number => a.evidence.runs ?? (a.evidence.decisions ?? 0) + (a.evidence.reopens ?? 0);
+  return [...all].sort((a, b) => weight(b) - weight(a)).slice(0, EARLY_MAX);
 }
 
 export class PulseService {
@@ -92,6 +106,62 @@ export class PulseService {
     return out;
   }
 
+  /**
+   * Company foundations from harness.db (eng finding 4): the strip, each
+   * member's count, and, once a member has enough work on both sides of the
+   * day its hit questions were answered, kept as is without and with them.
+   */
+  foundations(office: string): FoundationsPulse {
+    const db = this.d.db();
+    const jobs = this.d.memberJobs?.() ?? {};
+    if (!db) return { jobs: [], members: {} };
+    let rows: Array<{ agent_id: string | null; ts: number; attrs: string | null }> = [];
+    try { rows = db.prepare("SELECT agent_id, ts, attrs FROM telemetry_events WHERE office = ? AND kind = 'foundation' ORDER BY id").all(office) as typeof rows; } catch { return { jobs: [], members: {} }; }
+    const events: FoundationEvent[] = [];
+    for (const r of rows) {
+      try {
+        const a = r.attrs ? JSON.parse(r.attrs) as { q?: unknown; change?: unknown } : {};
+        if (typeof a.q === 'string' && (a.change === 'answered' || a.change === 'changed' || a.change === 'cleared' || a.change === 'hit')) events.push({ agentId: r.agent_id, ts: r.ts, q: a.q, change: a.change });
+      } catch { /* a broken row */ }
+    }
+    const state = replayFoundations(events);
+    // The record says what is answered now; the events say when and who hit it.
+    const answers = this.d.foundationsAnswers?.();
+    if (answers) {
+      for (const q of [...state.answeredAt.keys()]) if (!answers[q]) state.answeredAt.delete(q);
+      for (const [q, a] of Object.entries(answers)) {
+        const at = a ? Date.parse(a.at) : NaN;
+        if (!state.answeredAt.has(q as never) && Number.isFinite(at)) state.answeredAt.set(q as never, at);
+      }
+    }
+    const out = foundationsPulse(state, jobs);
+    // The proof (D14): the first of a member's hit questions answered splits its
+    // work in two; each side needs half the evidence advice needs.
+    const firsts = new Map<string, { q: FoundationEvent['q']; at: number }>();
+    for (const agentId of Object.keys(jobs)) {
+      for (const [q, by] of state.hits) {
+        const at = state.answeredAt.get(q);
+        const was = firsts.get(agentId);
+        if (at !== undefined && by.has(agentId) && (!was || at < was.at)) firsts.set(agentId, { q, at });
+      }
+    }
+    if (!firsts.size) return out;
+    const since = this.now() - 90 * 86_400_000;
+    const cards = this.d.processor.cards(office, since);
+    const decisions = this.d.processor.decisions(office, since);
+    const min = Math.ceil(MIN_DECISIONS * EARLY_SCALE);
+    for (const [agentId, first] of firsts) {
+      const at = first.at;
+      const before = keptAsIs(agentId, decisions.filter((d) => d.at < at), cards.filter((c) => (c.doneAt ?? 0) < at), min).share;
+      const after = keptAsIs(agentId, decisions.filter((d) => d.at >= at), cards.filter((c) => (c.doneAt ?? 0) >= at), min).share;
+      if (before === null || after === null) continue;
+      const proof = { without: before, with: after, question: first.q as never };
+      const c = countFor(new Set<string>(state.answeredAt.keys()), jobs[agentId]);
+      out.members[agentId] = out.members[agentId] ? { ...out.members[agentId], proof } : { answered: c.answered, total: c.total, missing: [], more: 0, proof };
+    }
+    return out;
+  }
+
   private dismissed(office: string): Dismissal[] {
     const db = this.d.db();
     if (!db) return [];
@@ -107,10 +177,11 @@ export class PulseService {
     }));
   }
 
-  /** Every suggestion the last 14 days support, before dismissals. */
-  private allAdvice(office: string): Advice[] {
+  /** Every suggestion the last 14 days support, before dismissals. In the
+   *  early mode, what the live days so far show at half the evidence (eng D1). */
+  private allAdvice(office: string, early?: EarlyMode): Advice[] {
     const now = this.now();
-    const since = now - ADVICE_WINDOW_MS;
+    const since = early ? Math.max(early.from, now - ADVICE_WINDOW_MS) : now - ADVICE_WINDOW_MS;
     const days = this.d.processor.days(office, dayKey(since)).filter((x) => x.day >= dayKey(since));
     const cards = this.d.processor.cards(office, since);
     const decisions = this.d.processor.decisions(office, since);
@@ -120,7 +191,7 @@ export class PulseService {
       .map((m) => ({ id: m.id, to: m.to === 'god' && godId ? godId : m.to, label: m.label, intervalMs: m.intervalMs, timed: !!(m.times?.length || m.weekly) }));
     const members = this.d.models().map((m) => {
       const mine = days.filter((x) => x.agentId === m.agentId);
-      const kept = keptAsIs(m.agentId, decisions, cards);
+      const kept = keptAsIs(m.agentId, decisions, cards, early ? Math.ceil(MIN_DECISIONS * early.scale) : undefined);
       return {
         agentId: m.agentId, provider: m.provider, model: m.model, isGod: m.agentId === godId,
         pieces: mine.reduce((s, x) => s + x.emails + x.sent + x.tasks + x.checks, 0),
@@ -136,7 +207,7 @@ export class PulseService {
     return adviceFor({
       now, runs: this.d.processor.runs(office, since), missions, members,
       ladder: this.d.ladder(), gapDays: this.d.store.failureDays(office), priceOf: this.d.priceOf
-    }).filter((a) => !recent.has(a.id));
+    }, early).filter((a) => !recent.has(a.id));
   }
 
   snapshot(period: Period, compare = false): PulseView {
@@ -147,7 +218,7 @@ export class PulseService {
     const db = this.d.db();
     const range = periodRange(period, now);
     const empty = pulseSnapshot({ period, now, days: [], cards: [], decisions: [], asks: [], members: [] });
-    if (!office || !db) return { available: false, billing, collectingSince: null, liveSince: null, snapshot: empty, advice: [], adviceFrom: null, saved: { state: 'none' }, headroom: null, applied: [], trend: {}, keptSafe: keptSafe([]), learning: learning({ notes: [], procedures: {}, asks: [], turns: [], range }), plan: null, compare: null, compareReady: false, compareFrom: null };
+    if (!office || !db) return { available: false, billing, collectingSince: null, liveSince: null, snapshot: empty, advice: [], early: [], adviceFrom: null, saved: { state: 'none' }, headroom: null, applied: [], trend: {}, keptSafe: keptSafe([]), learning: learning({ notes: [], procedures: {}, asks: [], turns: [], range }), plan: null, compare: null, compareReady: false, compareFrom: null };
     const first = this.d.processor.firstDay(office);
     // Recommendations and Compare count from live recording, never from a backfill.
     const live = this.d.processor.firstDay(office, true);
@@ -191,6 +262,8 @@ export class PulseService {
       liveSince: live,
       snapshot: cur.snapshot,
       advice: adviceReady ? visibleAdvice(this.allAdvice(office), this.dismissed(office), now) : [],
+      // Before advice can show: what the live days so far show, as facts (eng D1).
+      early: adviceReady || !live ? [] : earliest(this.allAdvice(office, { from: firstMs, scale: EARLY_SCALE })),
       adviceFrom: adviceReady ? null : dayKey(firstMs + ADVICE_WINDOW_MS),
       saved: this.saved(office, applied),
       headroom: billing === 'account' ? planHeadroom(this.reading) : null,
@@ -198,6 +271,7 @@ export class PulseService {
       trend: this.trend(office, ids, price),
       keptSafe: cur.keptSafe,
       learning: this.learning(office, range, before, asks),
+      foundations: this.foundations(office),
       plan,
       compare: prev ? { snapshot: prev.snapshot, keptSafe: prev.keptSafe } : null,
       compareReady,

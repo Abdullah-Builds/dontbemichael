@@ -55,6 +55,19 @@ test('Windows device names are made safe', () => {
   assert.equal(safeFolderName('lpt1'), 'lpt1-folder');
 });
 
+test('a device name with an extension is made safe, the suffix before the first dot', () => {
+  // Value: protects=a folder named CON.txt can be created and opened on Windows; fails_when=only the bare name is checked, or the suffix goes after the extension (Windows reads only the part before the first dot); why_new=PR #291; seam=none
+  assert.equal(safeFolderName('CON.txt'), 'CON-folder.txt');
+  assert.equal(safeFolderName('Aux.Studio'), 'Aux-folder.Studio');
+  assert.equal(safeFolderName('com1.data'), 'com1-folder.data');
+  assert.equal(safeFolderName('con.tar.gz'), 'con-folder.tar.gz');
+  assert.equal(safeFolderName('NUL.log'), 'NUL-folder.log');
+  // Not a device name: left as it is.
+  assert.equal(safeFolderName('CONference'), 'CONference');
+  assert.equal(safeFolderName('Console.Team'), 'Console.Team');
+  assert.equal(safeFolderName('com10.data'), 'com10.data');
+});
+
 test('very long names are shortened without leaving a trailing space', () => {
   const n = safeFolderName('Word '.repeat(30));
   assert.ok(n.length <= 60, `${n.length}`);

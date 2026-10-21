@@ -48,13 +48,19 @@ export const PRIVATE_ENTRIES = [
   'research-pending.json',
   'research-pending-lost.json',
   'research-mined',
+  // The outbox journal: ids the router chose, until each file is archived.
+  'outbox-routing',
   // Pulse's held list: subjects and openings of held messages (2026-10-16).
   'held.jsonl',
   // Pulse's questions and answers lists and their archive (eng D3: a reset
   // erases both; nothing else deletes the archive).
   'checked.jsonl',
   'checked-archive',
-  'checked-backfill.json'
+  'checked-backfill.json',
+  // Company foundations: the record the app alone writes (office-foundations.md),
+  // and the ids of the owner's messages it takes as the owner's words.
+  'foundations.json',
+  'owner-said.jsonl'
 ] as const;
 
 /** The privacy and standing approval checks' own empty folders (index.ts). */
@@ -70,6 +76,7 @@ export const APP_DATA_ENTRIES = [
   'knowledge',
   'integration-secrets.json',
   'mail-send-journal.json',
+  'broker-write-journal.json',
   'mail-proposals.json',
   'quickbooks-approvals.json',
   'trigger-history.json',
@@ -118,6 +125,13 @@ export function isKnowledgeStore(root: string): boolean {
   } catch { return false; }
 }
 
+/** Damaged write journals the broker moved aside; they hold app answers. */
+function setAsideJournals(userData: string): string[] {
+  try {
+    return readdirSync(userData).filter((n) => /^broker-write-journal\.damaged-\d+\.json$/.test(n)).map((n) => join(userData, n));
+  } catch { return []; }
+}
+
 /** Erase the office's data. `extra` adds folders that live elsewhere (the
  *  hive and palace where they resolve, Research's and the checks' Claude Code
  *  conversations). Returns the paths it could not remove; a reset carries on
@@ -136,6 +150,8 @@ export function eraseOfficeData(p: { home: string | null; userData: string; extr
     // Only the app's own office record, never an owner's file of that name.
     ...(home && readOfficeRecord(home) ? [officeRecordPath(home)] : []),
     ...APP_DATA_ENTRIES.map((n) => join(p.userData, n)),
+    // A damaged connected app write journal the broker set aside (brokerWriteOnce.ts).
+    ...setAsideJournals(p.userData),
     ...(p.extra ?? []).filter(Boolean)
   ];
   const failed: string[] = [];

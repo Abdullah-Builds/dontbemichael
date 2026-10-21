@@ -413,7 +413,7 @@ test('checks from before the lists kept words are put together once from the off
   assert.equal(rows(home).length, 0, 'once per office');
   const { PRIVATE_ENTRIES } = loadTs('src/main/factoryReset.ts');
   assert.ok(PRIVATE_ENTRIES.includes('checked-backfill.json'));
-  assert.match(read('src/main/homeFolder.ts'), /'checked-archive', 'checked-backfill\.json'\]/);
+  assert.match(read('src/main/homeFolder.ts'), /'checked-archive', 'checked-backfill\.json'[,\]]/);
   assert.match(read('src/main/index.ts'), /ensureCheckedBackfill\(privateRoot\(home\), \{/);
   assert.equal(JSON.parse(read('src/renderer/src/i18n/locales/en.json')).pulse.checked.found, "Put together later from the office's files: what kind of detail was taken out wasn't recorded then.");
 });

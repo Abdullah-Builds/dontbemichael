@@ -138,17 +138,21 @@ function baseName(p: string): string {
 function commonParent(paths: string[]): string | undefined {
   if (paths.length === 0) return undefined;
   const sep = paths[0].includes('\\') && !paths[0].includes('/') ? '\\' : '/';
+  const uncPath = /^[\\/]{2}[^\\/]+[\\/]+[^\\/]+/.test(paths[0]);
+  const windowsPath = /^[A-Za-z]:[\\/]/.test(paths[0]) || uncPath;
   const split = paths.map((p) => p.split(/[\\/]/));
   const parent = split.map((parts) => parts.slice(0, -1));
   const first = parent[0];
   let n = first.length;
   for (const parts of parent.slice(1)) {
     let i = 0;
-    while (i < n && i < parts.length && parts[i] === first[i]) i++;
+    while (i < n && i < parts.length && (windowsPath
+      ? parts[i].toLowerCase() === first[i].toLowerCase()
+      : parts[i] === first[i])) i++;
     n = i;
   }
   const joined = first.slice(0, n).join(sep);
-  return joined && joined !== sep && n > 1 ? joined : undefined;
+  return joined && joined !== sep && n > (uncPath ? 4 : 1) ? joined : undefined;
 }
 
 /**

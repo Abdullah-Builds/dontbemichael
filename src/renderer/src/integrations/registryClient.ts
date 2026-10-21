@@ -155,8 +155,15 @@ export const integrationsClient: IntegrationsClient = {
 
 // ───────────────────────── small UI helper ─────────────────────────
 
-/** Best-effort slug from a label (server-side validateIntegrationRecord is authoritative). */
-export function slugify(label: string): string {
+/** Best-effort slug from a label (server-side validateIntegrationRecord is authoritative).
+ *  A new integration passes the ids already registered as `taken` and gets the
+ *  next free one (`stripe-2`): saving under an id in use replaces that
+ *  integration and its secret, and every label with no a to z letters (an
+ *  Arabic or Chinese one) slugs to the same `api-x`. */
+export function slugify(label: string, taken: readonly string[] = []): string {
   const base = label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).replace(/-+$/g, '');
-  return base.length >= 2 ? base : `${base || 'api'}-x`;
+  const slug = base.length >= 2 ? base : `${base || 'api'}-x`;
+  let id = slug;
+  for (let n = 2; taken.includes(id); n++) id = `${slug.slice(0, 39 - String(n).length).replace(/-+$/, '')}-${n}`;
+  return id;
 }

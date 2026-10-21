@@ -95,3 +95,26 @@ test('a dismissed suggestion returns only at the next evidence band or after 14 
   assert.equal(A.visibleAdvice([{ ...s, band: s.band + 1 }], dismissed, NOW).length, 1, 'evidence grew');
   assert.equal(A.visibleAdvice([s], dismissed, NOW + 14 * 86_400_000).length, 1, '14 days later');
 });
+
+test('the early mode runs every rule on the live days so far at half its evidence, and nothing else changes (owner, 2026-10-19)', () => {
+  // Value: protects=eng D1 and D2: half minimums per rule, the live window, Michael and gap days left out; fails_when=a minimum is not halved, days before the live start count, Michael gets a model fact, or a gap day counts; why_new=new early mode; seam=none; no_claim=wording (pulse-view pins)
+  const early = { from: NOW - 6 * 24 * H, scale: 0.5 };
+  // Schedules: 5 runs (half of 10), 4 found nothing.
+  const five = runs(5, 4);
+  assert.deepEqual(A.adviceFor({ ...base, missions: [mission], runs: five }), [], 'the 14 day rule needs 10 runs');
+  const [less] = A.adviceFor({ ...base, missions: [mission], runs: five }, early);
+  assert.equal(less.kind, 'run-less');
+  assert.deepEqual(less.evidence, { runs: 5, nothing: 4 });
+  assert.deepEqual(A.adviceFor({ ...base, missions: [mission], runs: runs(4, 4) }, early), [], '4 runs: under half');
+  const old = runs(5, 5, { start: NOW - 9 * 24 * H, day: new Date(NOW - 9 * 24 * H).toISOString().slice(0, 10) });
+  assert.deepEqual(A.adviceFor({ ...base, missions: [mission], runs: old }, early), [], 'runs before the live start do not count');
+  assert.deepEqual(A.adviceFor({ ...base, missions: [mission], runs: five, gapDays: five.map((r) => r.day) }, early), [], 'gap days are left out');
+  // Model rules: 10 pieces and 5 decisions (half of 20 and 10); 2 reopens (half of 3).
+  const kept = member({ pieces: 10, mailDecisions: 5, keptDecisions: 5, keptShare: 1 });
+  assert.deepEqual(A.adviceFor({ ...base, members: [kept] }), [], 'the 14 day rule needs 20 pieces and 10 decisions');
+  assert.equal(A.adviceFor({ ...base, members: [kept] }, early)[0].kind, 'cheaper-model');
+  assert.deepEqual(A.adviceFor({ ...base, members: [{ ...kept, isGod: true }] }, early), [], 'never Michael');
+  const back = member({ model: 'claude-sonnet-5', pieces: 3, mailDecisions: 1, keptDecisions: 3, keptShare: null, reopens: 2 });
+  assert.deepEqual(A.adviceFor({ ...base, members: [back] }), [], 'the 14 day rule needs 3 reopens');
+  assert.equal(A.adviceFor({ ...base, members: [back] }, early)[0].kind, 'stronger-model');
+});

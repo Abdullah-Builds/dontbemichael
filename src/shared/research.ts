@@ -23,7 +23,7 @@ export const RESEARCH_ROLE = 'Research';
 
 /** Words the hive routes by, and the app's own senders: never a name for
  *  Research, or messages meant for them would go its way (ship review). */
-export const ROUTING_WORDS: readonly string[] = ['human', 'owner', 'god', 'michael', 'broadcast', 'all', 'everyone', 'team', 'scheduler', 'heartbeat', 'mail', 'system', 'privacy-check', 'app'];
+export const ROUTING_WORDS: readonly string[] = ['human', 'owner', 'god', 'michael', 'broadcast', 'all', 'everyone', 'team', 'scheduler', 'heartbeat', 'mail', 'system', 'privacy-check', 'app', 'foundations'];
 
 /** A name the owner may give Research, or undefined: one short line of
  *  letters (any language), digits, spaces and . ' -, never a routing word.

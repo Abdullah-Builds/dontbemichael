@@ -31,7 +31,6 @@ const { companyKnowledgeLine } = loadTs('src/main/hive.ts');
 
 test('the mirror holds one file per document, titled, and drops removed ones', () => {
   const k = new KnowledgeManager();
-  assert.equal(k.active(), true, 'on by default');
   const a = k.ingestText('Refunds are given within 30 days with a receipt.', { title: 'Refund policy' });
   const b = k.ingestText('Open 9am to 6pm.', { title: 'Opening hours' });
   const m = k.meaningMirror();

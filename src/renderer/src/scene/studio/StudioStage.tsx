@@ -22,11 +22,11 @@ import { useHasTerminalDraft } from '@/components/terminalPool';
 import { useOfficeBreak } from '@/components/OfficeBreakNotice';
 import type { OfficeBreakView } from '@shared/officeBreak';
 import { useMissions } from '@/components/triggers/ScheduleList';
-import { openQuestions, parseTasks } from '@/components/TasksKanban';
+import { parseTasks } from '@/components/TasksKanban';
 import { missionsFor, nextRunAt } from '@shared/missions';
 import { createBanter, createIdleLines } from '@/scene/office/cafeteriaLines';
 import { browserStorage, markWelcomed, welcomeArmed } from '@/scene/office/peteWelcome';
-import { getNeedsYouFeed, newestAskFor, useNeedsYou, useNeedsYouCount } from '@/shell/useNeedsYou';
+import { getNeedsYouFeed, newestAskFor, shownQuestions, useNeedsYou, useNeedsYouCount } from '@/shell/useNeedsYou';
 import { chatCandidates, stillIn } from '@/shell/closingFloor';
 
 /** Nobody has gone home (not closing time). */
@@ -65,7 +65,7 @@ interface TaskSnapshot { board: Board; doingBy: Record<string, number>; forYouBy
 function useTaskSnapshot(godId: string): TaskSnapshot {
   // The shared task read (shell/useNeedsYou.ts, eng R4): the "for you" chips
   // always match the pill and the board.
-  const { tasks } = useNeedsYou();
+  const { tasks, foundations } = useNeedsYou();
   return useMemo(() => {
     const board: Board = { todo: 0, doing: 0, waiting: 0, blocked: 0, done: 0 };
     const doingBy: Record<string, number> = {};
@@ -77,11 +77,12 @@ function useTaskSnapshot(godId: string): TaskSnapshot {
       board[t.status]++;
       if (t.status === 'done') done[t.id] = t.assignee;
       if (t.status === 'doing' && t.assignee) doingBy[t.assignee] = (doingBy[t.assignee] ?? 0) + 1;
-      if (t.assignee) { const asks = openQuestions(t).length; if (asks) forYouBy[t.assignee] = (forYouBy[t.assignee] ?? 0) + asks; }
+      // Only asks Needs you shows: a foundation question answered another way or put off is left out.
+      if (t.assignee) { const asks = shownQuestions(t, foundations).length; if (asks) forYouBy[t.assignee] = (forYouBy[t.assignee] ?? 0) + asks; }
       if (t.status !== 'done' && (t.assignee === godId || t.assignee === 'god')) kept++;
     }
     return { board, doingBy, forYouBy, kept, done };
-  }, [tasks, godId]);
+  }, [tasks, foundations, godId]);
 }
 
 /** Jobs Michael handed out today: his `request` messages in the hive log. */
@@ -653,7 +654,7 @@ function PodCard({ style, dept, members, c, snap, selected, onSelect, missions, 
           // Opens the board at this pod's newest ask, focus in its reply (D11).
           <button
             className="cth-for-you"
-            onClick={() => useStore.getState().openNeedsYou({ taskId: newestAskFor(members.map((a) => a.id), getNeedsYouFeed().tasks) })}
+            onClick={() => useStore.getState().openNeedsYou({ taskId: newestAskFor(members.map((a) => a.id), getNeedsYouFeed().tasks, getNeedsYouFeed().foundations) })}
             style={{ ...forYouBadge, background: undefined, border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
           ><i style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--cth-coral-base)', display: 'block' }} />{t('studio.forYou', { count: forYou })}</button>
         )}

@@ -36,8 +36,9 @@ test('the one writer is saveAll, and it sends a single merged patch', () => {
 
 test('toggles stage their change instead of writing it', () => {
   // The specific toggles that used to persist the instant you clicked them.
-  for (const key of ['strongKeepalive', 'autoMode', 'orchestratorMaySpawn',
-                     'semanticMemory', 'telemetryEnabled']) {
+  // semanticMemory left with its switch: search by meaning runs whenever
+  // MemPalace is installed (owner, 2026-10-19).
+  for (const key of ['strongKeepalive', 'autoMode', 'orchestratorMaySpawn', 'telemetryEnabled']) {
     // autoUpdate left with its switch: every installed build checks (owner, 2026-10-02).
     const re = new RegExp(`stage\\(\\{ ${key}:`);
     assert.match(MODAL, re, `${key} is not staged`);

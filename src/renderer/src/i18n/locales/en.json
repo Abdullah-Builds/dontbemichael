@@ -196,7 +196,9 @@
     "traces": "Traces",
     "memory": "Memory",
     "profile": "Profile",
-    "capabilities": "Access"
+    "capabilities": "Access",
+    "resizeLabel": "Resize the side panel",
+    "resizeTitle": "Drag to resize. Double click to reset."
   },
   "toolWaterfall": {
     "fresh": "fresh {{tokens}}t",
@@ -334,12 +336,9 @@
       "steerFirst": "Steer first"
     },
     "memory": {
-      "semanticMemory": "Semantic memory",
-      "crossSession": "Recall across sessions",
-      "crossSessionDesc": "Your team remembers what it learns from one day to the next, and can find it again by meaning, not just exact words. Search it from the Memory tab on {{godName}}'s panel.",
-      "kg": "Knowledge Graph",
-      "kgTitle": "Enterprise knowledge base",
-      "kgDesc": "Add your docs, images & PDFs; agents query them on demand via the kg tool.",
+      "kg": "Company knowledge",
+      "kgTitle": "Documents your team searches",
+      "kgDesc": "Policies, prices and how the business runs: Word, Excel, PowerPoint, PDF, text or images.",
       "adding": "Adding…",
       "addFiles": "Add files…",
       "docCount": "{{count}} document indexed",
@@ -349,7 +348,25 @@
       "errUnknown": "something went wrong reading it",
       "errNotFound": "the file is no longer there",
       "errNoPermission": "this computer did not allow reading it",
-      "errIsFolder": "that is a folder, not a file"
+      "errIsFolder": "that is a folder, not a file",
+      "docs": {
+        "label": "Documents",
+        "tip": "What your team searches. Open one in your own app; when you save it there, agents search the new version.",
+        "open": "Open",
+        "openAria": "Open {{title}}",
+        "readOnly": "Read only",
+        "readOnlyTip": "The app keeps this document up to date from what you and the team answer, so it opens as a copy to read.",
+        "added": "added {{date}}",
+        "updated": "updated {{date}}",
+        "savedIn": "Read in your changes to {{title}}.",
+        "saveFailed": "Couldn't read your changes to {{title}}: {{reason}}",
+        "openFailed": "Couldn't open {{title}}."
+      },
+      "meaning": {
+        "title": "Search by meaning",
+        "tip": "Your team also finds passages that say the same thing in other words, not only the exact words. It searches company knowledge only; each member's own memory stays private. It runs once MemPalace is set up in Prerequisites.",
+        "languageTip": "Changing it indexes your documents again. Search by meaning is back once that finishes, usually within a few minutes."
+      }
     },
     "connections": {
       "slack": "Slack",
@@ -504,11 +521,9 @@
     "noIssues": "No issues fetched yet.",
     "assign": "Assign",
     "textSearch": "TEXT SEARCH (board, tasks, memory)",
-    "textSearchPlaceholder": "Find exact text across hive files…",
+    "textSearchPlaceholder": "Find words in the team's notes, the board and tasks",
     "nothingMatched": "Nothing matched.",
-    "searchNoMatch": "Nothing matched yet.",
     "semanticSearch": "SEMANTIC SEARCH (MemPalace)",
-    "semanticPlaceholder": "What does the hive know about…",
     "memoryFile": "Memory file",
     "noMemory": "No memory recorded yet.",
     "activity": "Activity",
@@ -1238,6 +1253,8 @@
     "labelHint": "Names the job. How it is done comes from the Work style; the focus area says what each run looks at.",
     "officeEmpty": "No one on the team has a job on a clock turned on.",
     "emptyAgent": "{{name}} has no jobs on a clock yet.",
+    "suggestedJob": "Suggested: {{title}}, {{schedule}}",
+    "addSuggestedJob": "Add {{title}} paused",
     "addFor": "add a schedule for {{name}}",
     "agentSummary": "{{name}} runs {{count}} job on a clock.",
     "agentSummaryPlural": "{{name}} runs {{count}} jobs on a clock.",
@@ -1275,6 +1292,7 @@
     "focusConflict": "This may clash: {{conflict}} Change it, or save anyway.",
     "focusFromOlder": "Started from this job's older instructions.",
     "addFocus": "Add a focus area",
+    "cannotCheckEmail": "{{name}} cannot check email",
     "checking": "Checking…",
     "saveAnyway": "Save anyway"
   },
@@ -1322,6 +1340,7 @@
     "pickDayHint": "Pick at least one day, or this will never run.",
     "addTime": "add another time",
     "removeTime": "remove",
+    "everyCapped": "Now every 1 day: with more than one time, a line repeats at most once a day.",
     "onlyBetween": "only between",
     "and": "and",
     "windowHint": "The end time is before the start time.",
@@ -1438,11 +1457,11 @@
   },
   "memoryPanel": {
     "notSetUp": "Not set up",
-    "onReady": "On · ready",
-    "onGettingReady": "On · getting ready…",
+    "onReady": "Ready",
+    "onGettingReady": "Getting ready…",
     "notInstalled": "Search by meaning isn't installed yet.",
     "setUpInPrereqs": "set it up in Prerequisites →",
-    "plainNotesStill": "Agents still keep plain notes without it.",
+    "plainNotesStill": "Your team still searches company knowledge by exact words without it.",
     "searchLanguage": "Search language",
     "modelFast": "Fast",
     "modelFastDetail": "English only · ~90 MB",
@@ -1667,7 +1686,11 @@
     "askWithdrawnBecause": "Withdrawn without an answer: {{reason}}",
     "askWithdrawnCardClosed": "Withdrawn when the card closed.",
     "askWithdrawnMemberDeleted": "Withdrawn when the team member who raised it was deleted.",
-    "empty": "Nothing here",
+    "emptyTodo": "Nothing lined up. Tell {{godName}} what is next.",
+    "emptyDoing": "No one is on anything right now.",
+    "emptyWaiting": "No one is waiting on anyone.",
+    "emptyBlocked": "Nothing blocked. Enjoy it while it lasts.",
+    "emptyDone": "Nothing finished yet. Give the team a minute.",
     "showFewer": "Show fewer",
     "more": "{{count}} more",
     "status": "Status",
@@ -1687,7 +1710,9 @@
     "ageDays": "{{count}} d",
     "closedByOwner": "Closed by owner",
     "nothingAsked": "Nothing asked",
-    "nothingAskedTitle": "Blocked, but nothing on it waits on you. {{godName}} is told to ask you or move it."
+    "nothingAskedTitle": "Blocked, but nothing on it waits on you. {{godName}} is told to ask you or move it.",
+    "showingFiltered": "Showing {{count}} of {{total}} tasks",
+    "noMatchingTasks": "No tasks match your search or filters"
   },
   "queueComposer": {
     "recording": "● recording. Click stop to transcribe",
@@ -1955,9 +1980,7 @@
     "stepsMissing": "The steps for this aren't saved yet.",
     "showFile": "Show the file",
     "showNotes": "Show as notes",
-    "searchTitle": "Search the office",
-    "exactWords": "Exact words",
-    "byMeaning": "By meaning"
+    "searchTitle": "Search the office"
   },
   "profile": {
     "officeManager": "Office manager",
@@ -2138,6 +2161,7 @@
     "michaelBoard": "updating the board",
     "minutes": "{{count}} min",
     "agentWords": "“{{text}}”",
+    "lastSaid": "Last said: “{{text}}”",
     "sendFailed": "Didn't send. Try again.",
     "michaelEnded": "terminal ended: Cancel and go back to work, or Force quit now",
     "confirmedCount": "{{acked}} / {{total}} workers confirmed",
@@ -2343,6 +2367,13 @@
     "empty": "Ask anything about the office.",
     "example1": "What's on today?",
     "example2": "How did last week go?",
+    "newReplies_zero": "No new replies",
+    "newReplies_one": "1 new reply",
+    "newReplies_two": "2 new replies",
+    "newReplies_few": "{{count}} new replies",
+    "newReplies_many": "{{count}} new replies",
+    "newReplies_other": "{{count}} new replies",
+    "jumpToLatest": "Jump to latest",
     "earlier": "Earlier",
     "today": "Today",
     "yesterday": "Yesterday",
@@ -2470,6 +2501,8 @@
     "waitingMany": "{{count}} asks are waiting. They go back to the sender.",
     "windows": "On Windows, {{name}} can still reach your office files.",
     "windowsTip": "Windows can't fence in {{name}}'s commands yet, so the privacy check doesn't fully hold there.",
+    "windowsTeam": "On Windows, your team's commands can still reach the internet.",
+    "windowsTeamTip": "Windows can't hold the team's commands off the internet yet: only their web tools are refused there. On a Mac, only {{name}} uses the internet.",
     "sendTitle": "What your team may send to {{name}}",
     "sendTip": "Every message to {{name}} is checked. Anything private goes back to the sender, and nothing leaves.",
     "count": "{{allowed}} allowed, {{private}} private",
@@ -2572,6 +2605,24 @@
     "notNow": "Not now",
     "savesAbout": "Saves about {{usd}} a week",
     "adviceStarts": "Recommendations start on {{day}}, once Pulse has seen two full weeks of your team at work. It began on {{since}}, and a few unusually busy or quiet days alone could lead to the wrong advice.",
+    "adviceFrom": "Advice from {{day}}",
+    "early": {
+      "title": "What Pulse sees so far, not advice yet.",
+      "runLess": "{{name}}'s \"{{job}}\" found nothing to do on {{nothing}} of {{runs}} runs so far.",
+      "runMore": "{{name}}'s \"{{job}}\" found work on {{didWork}} of {{runs}} runs so far.",
+      "kept": "{{kept}} of {{decisions}} pieces of {{name}}'s work kept as is so far.",
+      "keptFew": "Only {{kept}} of {{decisions}} pieces of {{name}}'s work kept as is so far.",
+      "reopened": "You reopened {{reopens}} of {{name}}'s cards so far.",
+      "pill": "Early look",
+      "dayOf": "Day {{n}} of {{days}}",
+      "ofRuns": "of {{n}} runs",
+      "of": "of {{n}}",
+      "capNothing": "found nothing to do so far",
+      "capWork": "found work so far",
+      "capKept": "kept as is so far",
+      "capReopened": "cards you reopened so far",
+      "more": "More patterns show here as your team works."
+    },
     "nothingToChange": "Nothing to change this week.",
     "savedByChanges": "Saved by your changes",
     "savedTip": "Measured from the records: what each piece of work cost before your change, against what it costs since. At API prices.",
@@ -2582,7 +2633,8 @@
     "whatGotDone": "What got done",
     "outcome": {
       "email": "emails organized",
-      "sent": "emails sent for you, {{sub}} as written",
+      "sent": "emails sent for you, {{sub}} approved without edits",
+      "sentNone": "emails sent for you",
       "task": "tasks finished",
       "check": "scheduled checks, {{sub}} found work"
     },
@@ -2647,7 +2699,6 @@
     "awayMine": "of their work",
     "fourWeeks": "Value, last 4 weeks",
     "safe": {
-      "title": "Kept safe",
       "toInternet": "questions to the internet",
       "sentAsWritten": "As written",
       "privateOut": "Private parts removed",
@@ -2676,7 +2727,6 @@
       "rulesTip": "Each member can only use what you gave them in Settings; anything else is blocked."
     },
     "learning": {
-      "title": "Learning",
       "tip": "A note counts on the day it is added to a member's memory; an edit does not. Questions to you are counted against the requests the team took.",
       "fromYou": "From your answers",
       "onJob": "Learned on the job",
@@ -2701,10 +2751,18 @@
     "work": {
       "title": "Team at work",
       "tip": "Working time runs from each request a member takes to its last reply, up to an hour each. Cost is each member's part of your plan by their share of the work.",
-      "none": "No working time recorded yet.",
+      "nobody": {
+        "today": "Nobody has worked yet today.",
+        "this-week": "Nobody has worked yet this week.",
+        "this-month": "Nobody has worked yet this month."
+      },
       "headTop": "{{a}} and {{b}} did {{pct}} of the team's working time.",
       "headQuiet": "{{names}} were mostly quiet.",
       "headQuietOne": "{{names}} was mostly quiet.",
+      "quietMore": "{{n}} more were quiet",
+      "quietMoreOne": "1 more was quiet",
+      "quietAll": "{{n}} were quiet",
+      "quietAllOne": "1 was quiet",
       "headCostly": "{{name}} cost the most for the least work: {{usd}} for {{time}}.",
       "member": "Member",
       "time": "Working time",
@@ -2720,7 +2778,8 @@
       "open": "Click a member for their week",
       "rowAria": "{{name}}: {{time}} of work, {{value}}",
       "cost": "Cost",
-      "planLegend": "Cost: each member's part of your plan"
+      "planLegend": "Cost: each member's part of your plan",
+      "rowAriaFoundations": "{{row}}, {{foundations}}"
     },
     "plan": {
       "yourPlan": "Claude plan",
@@ -2856,6 +2915,139 @@
       },
       "earlier": "{{count}} more without details.",
       "notesEmpty": "There were no notes in it yet, only {{research}}'s empty notes page."
+    },
+    "quiet": {
+      "row": "Quiet so far",
+      "chipAria": "{{name}}: 0 {{period}}. Show tile.",
+      "opened": "{{name}}, 0 {{period}}",
+      "period": {
+        "today": "today",
+        "this-week": "this week",
+        "this-month": "this month"
+      },
+      "name": {
+        "email": "emails organized",
+        "sent": "emails sent",
+        "task": "tasks finished",
+        "check": "scheduled checks",
+        "toInternet": "questions to the internet",
+        "webAnswers": "web answers cleaned",
+        "held": "messages held",
+        "rules": "steps blocked",
+        "learned": "new notes",
+        "questions": "questions to you",
+        "spent": "spent",
+        "yourTime": "your time"
+      }
+    },
+    "foundations": {
+      "label": "Foundations",
+      "tip": "What each job needs to know about your business, from Company foundations. Only jobs whose work needed an empty answer show here. Open one to answer its questions in Needs you.",
+      "jobAria": "{{job}}, {{answered}} of {{total}} answered. Open its questions",
+      "count": "Foundations {{answered}} of {{total}}",
+      "of": "{{answered}} of {{total}}",
+      "more_one": "and {{count}} more no work has needed yet",
+      "more": "and {{count}} more no work has needed yet",
+      "notNeeded_one": "{{count}} empty, no work has needed it yet",
+      "notNeeded": "{{count}} empty, no work has needed them yet",
+      "without": "Without {{what}}",
+      "with": "With it",
+      "proofLine": "Work kept as is, before and after the answer.",
+      "openQuestion": "Open the {{what}} question"
     }
+  },
+  "foundations": {
+    "q": {
+      "offer": "What we sell",
+      "customers": "Who we sell to (ideal customer)",
+      "sales_process": "How a sale happens, step by step",
+      "market": "Businesses, consumers or both",
+      "deals": "Where leads and deals are kept",
+      "prices": "Prices and terms",
+      "voice": "How we sound (brand voice)",
+      "brand": "How we look (logo, colors, fonts)",
+      "current_customers": "Who our customers are today",
+      "competitors": "Who we compete with, and how we differ",
+      "accounting": "Accounting method (cash or accrual)",
+      "fiscal_year": "Financial year",
+      "money": "Where money in and out is recorded",
+      "owed": "Who owes us and whom we owe, and where that is kept",
+      "results": "Statements, budgets or targets",
+      "policies": "Refunds, returns and service promises",
+      "hours": "Opening hours",
+      "faq": "Common customer questions and their answers",
+      "team": "Who is on the team and who handles what",
+      "calendar": "Where meetings and bookings are kept",
+      "hiring": "How we hire and welcome new people",
+      "tools": "The systems we work in, and who uses each",
+      "access": "How passwords and access are handled",
+      "suppliers": "Our suppliers and how we order",
+      "stock": "Where stock is tracked",
+      "shipping": "How orders are packed and delivered"
+    },
+    "short": {
+      "offer": "what we sell",
+      "customers": "ideal customer",
+      "sales_process": "how a sale happens",
+      "market": "businesses or consumers",
+      "deals": "where deals are kept",
+      "prices": "prices and terms",
+      "voice": "brand voice",
+      "brand": "brand look",
+      "current_customers": "customers today",
+      "competitors": "competitors",
+      "accounting": "accounting method",
+      "fiscal_year": "financial year",
+      "money": "where money is recorded",
+      "owed": "who owes whom",
+      "results": "budgets and targets",
+      "policies": "service policies",
+      "hours": "opening hours",
+      "faq": "common questions",
+      "team": "who handles what",
+      "calendar": "where bookings are kept",
+      "hiring": "how we hire",
+      "tools": "our systems",
+      "access": "how access is handled",
+      "suppliers": "suppliers",
+      "stock": "where stock is tracked",
+      "shipping": "how orders are delivered"
+    },
+    "job": {
+      "sales": "Sales",
+      "marketing": "Marketing",
+      "finance": "Finance",
+      "support": "Customer support",
+      "front-desk": "Front desk and admin",
+      "people": "People",
+      "it": "IT",
+      "operations": "Operations"
+    },
+    "card": {
+      "needs": "needs this",
+      "needsAgo": "needs this, {{ago}}",
+      "yourAnswer": "Your answer",
+      "hint": "A few plain sentences, under {{n}} characters. For more, name the file that holds it.",
+      "save": "Save answer",
+      "draftBy": "Have {{name}} draft it",
+      "notNow": "Not now",
+      "drafting": "{{name}} is drafting an answer from what the office holds.",
+      "draftedBy": "drafted by {{name}}, edit and save",
+      "usedBy_one": "{{jobs}} uses this",
+      "usedBy": "{{jobs}} use this",
+      "weekly": "Asked weekly until answered",
+      "failed": "Couldn't save, try again.",
+      "saved": "Saved to Company foundations.",
+      "failedDraft": "Couldn't ask {{name}} to draft it, try again.",
+      "failedLater": "Couldn't put this off, try again.",
+      "sentToMichael": "Sent to {{godName}} to add to Company foundations.",
+      "failedGone": "Couldn't add your answer to Company foundations. Tell {{godName}}.",
+      "drafted": "a draft, edit and save"
+    }
+  },
+  "knowledgeNotice": {
+    "title": "Company knowledge is always on",
+    "body": "You had turned company knowledge off. It has no switch now, so your team can search the documents in it. Open the list to remove any you would rather they not read.",
+    "open": "Open the list"
   }
 }

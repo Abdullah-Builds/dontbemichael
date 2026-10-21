@@ -23,6 +23,7 @@ import { plainReasonKey } from '@/store/plainReason';
 import { ALLOW_TEMP_WORKERS, SHOW_ORG_TRIGGER, COLLECT_USAGE_STATS, SHOW_VOICE, SHOW_SLACK, SHOW_MAILBOXES, SHOW_MCP_DEFAULTS, SHOW_SIMPLE_MODE_SWITCH, SHOW_ARABIC_TERMINAL_SWITCH, SHOW_LANGUAGE_PICKER } from '@shared/buildFeatures';
 import { WebhookSchemaEditor } from './triggers/WebhookSchemaEditor';
 import { InfoTip } from './InfoTip';
+import { KnowledgeDocList } from './KnowledgeDocList';
 import { PixelButton } from './PixelButton';
 import { SettingsHeroCard } from './SettingsHeroCard';
 import { CompanyProfileSettings } from './CompanyProfileSettings';
@@ -217,7 +218,7 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
   const godName = useStore((s) => s.agents.find((a) => a.isGod)?.name) ?? t('common.orchestrator');
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [activeSection, setActiveSection] = useState<Section>(initialSection ?? 'General');
+  const [activeSection, setActiveSection] = useState<Section>(initialSection && VISIBLE_SECTIONS.includes(initialSection) ? initialSection : 'General');
 
   // Change-home flow: null until the user picks a new folder, then the sub-modal
   // confirms move-vs-fresh. Pre-selects 'move' (recommended - keeps the data).
@@ -256,7 +257,7 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
   // ─── v0.3.4 redesign: settings that were onboarding-trapped or UI-less ────
   const cfgX = config as HarnessConfig & {
     strongKeepalive?: boolean; audience?: string; autoMode?: boolean;
-    defaultModel?: string; maxTurns?: number; semanticMemory?: boolean;
+    defaultModel?: string; maxTurns?: number;
   };
   /**
    * ONE SAVE BUTTON.
@@ -346,12 +347,6 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
   const maxTurnsPatch = (): Partial<HarnessConfig> => {
     const n = maxTurnsVal.trim() === '' ? undefined : Number(maxTurnsVal);
     return { maxTurns: Number.isFinite(n as number) && (n as number) > 0 ? Math.round(n as number) : undefined } as Partial<HarnessConfig>;
-  };
-  const [semMemOn, setSemMemOn] = useState<boolean>(cfgX.semanticMemory !== false);
-  const toggleSemMem = async () => {
-    const next = !semMemOn;
-    setSemMemOn(next);
-    stage({ semanticMemory: next } as Partial<HarnessConfig>);
   };
   // Search language + live status. Moved here from the floating "hive memory"
   // panel that sat on the office floor: nothing in it was about the floor, its
@@ -494,9 +489,6 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
   const [orgNote, setOrgNote] = useState('');
 
   // ─── Knowledge Graph (enterprise multimodal context for agents) ───────────
-  const [kgEnabled, setKgEnabled] = useState<boolean>(
-    (config as HarnessConfig & { knowledgeGraph?: { enabled?: boolean } }).knowledgeGraph?.enabled === true
-  );
   const [kgDocCount, setKgDocCount] = useState(0);
   const [kgBusy, setKgBusy] = useState(false);
   const [kgNote, setKgNote] = useState('');
@@ -504,15 +496,6 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
   const refreshKgStatus = async () => {
     try { const s = await window.cth.kgStatus(); setKgDocCount(s.docCount); }
     catch { /* status unavailable */ }
-  };
-
-  const toggleKg = async () => {
-    const next = !kgEnabled;
-    setKgEnabled(next);
-    try {
-      stage({ knowledgeGraph: { enabled: next } });
-      if (next) await refreshKgStatus();
-    } catch { setKgEnabled(!next); }
   };
 
   const addKgFiles = async () => {
@@ -620,8 +603,6 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
       setSlackChannel(cc.slackChannelId ?? '');
       setSlackPort(String(cc.slackPort ?? 3847));
       setSlackProactivePosting(cc.slackProactivePosting ?? false);
-      const kgOn = (cc as { knowledgeGraph?: { enabled?: boolean } }).knowledgeGraph?.enabled === true;
-      setKgEnabled(kgOn);
       setFreeflowEnabled(cc.freeflowEnabled !== false);
       setGroqKey(cc.groqApiKey ?? '');
       setFreeflowModel(cc.freeflowModel ?? 'whisper-large-v3-turbo');
@@ -1536,114 +1517,17 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
 
                   {activeSection === 'Memory & Knowledge' && (
                     <>
-                      <div>
-                        <div style={sectionHead}>
-                          {t('settings.memory.semanticMemory')}
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            <span style={{ fontSize: 13, lineHeight: '20px', color: 'var(--cth-ink-900)' }}>{t('settings.memory.crossSession')}</span>
-                            <span style={{ fontSize: 12, lineHeight: '16px', color: 'var(--cth-ink-500)' }}>
-                              {t('settings.memory.crossSessionDesc', { godName })}
-                            </span>
-                          </div>
-                          <PixelButton variant={semMemOn ? 'primary' : 'secondary'} size="sm" onClick={toggleSemMem}>
-                            {semMemOn ? t('common.on') : t('common.off')}
-                          </PixelButton>
-                        </div>
-
-                        {/* Is it working? One state line, as the floor panel had. */}
-                        {memStatus && (() => {
-                          const st = !memStatus.available
-                            ? { dot: 'var(--cth-coral)', label: t('memoryPanel.notSetUp') }
-                            : !semMemOn
-                              ? { dot: 'var(--cth-ink-500)', label: t('common.off') }
-                              : memStatus.initialized
-                                ? { dot: 'var(--cth-mint)', label: t('memoryPanel.onReady') }
-                                : { dot: 'var(--cth-lemon)', label: t('memoryPanel.onGettingReady') };
-                          return (
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--cth-ink-900)', marginTop: 8 }}>
-                              <span style={{ borderRadius: 'var(--cth-r-md)', width: 8, height: 8, background: st.dot, boxShadow: 'inset 0 0 0 1px var(--cth-line-2)' }} />
-                              {st.label}
-                            </span>
-                          );
-                        })()}
-
-                        {/* Not installed: send them to the setup that installs it. */}
-                        {memStatus && !memStatus.available && (
-                          <div style={{
-                            borderRadius: 'var(--cth-r-md)',
-                            marginTop: 8, fontSize: 12, color: 'var(--cth-ink-700)', lineHeight: 1.6,
-                            background: 'var(--cth-cream-100)', boxShadow: 'inset 0 0 0 1px var(--cth-line-2)', padding: 10
-                          }}>
-                            {t('memoryPanel.notInstalled')}
-                            <div style={{ marginTop: 8 }}>
-                              <PixelButton variant="primary" size="sm" onClick={() => setActiveSection('Prerequisites')}>
-                                {t('memoryPanel.setUpInPrereqs')}
-                              </PixelButton>
-                            </div>
-                            <div style={{ marginTop: 8, color: 'var(--cth-ink-500)' }}>{t('memoryPanel.plainNotesStill')}</div>
-                          </div>
-                        )}
-
-                        {/* Search language: a benefit framed choice, not a model codename. */}
-                        {memStatus?.available && (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 }}>
-                            <span style={{ fontSize: 14, lineHeight: '20px', color: 'var(--cth-ink-900)' }}>{t('memoryPanel.searchLanguage')}</span>
-                            <div style={{ display: 'flex', gap: 8 }}>
-                              {([
-                                ['minilm', t('memoryPanel.modelFast'), t('memoryPanel.modelFastDetail')],
-                                ['embeddinggemma', t('memoryPanel.modelMultilingual'), t('memoryPanel.modelMultilingualDetail')]
-                              ] as const).map(([id, title, detail]) => {
-                                const sel = embeddingModel === id;
-                                return (
-                                  <button
-                                    key={id}
-                                    type="button"
-                                    onClick={() => pickEmbeddingModel(id)}
-                                    style={{
-                                      borderRadius: 'var(--cth-r-md)',
-                                      flex: 1, textAlign: 'left', cursor: 'pointer', border: 'none', padding: '8px 8px',
-                                      background: sel ? 'var(--cth-lemon-light)' : 'var(--cth-cream-100)',
-                                      boxShadow: sel ? 'inset 0 0 0 1.5px var(--cth-indigo)' : 'inset 0 0 0 1px var(--cth-line-2)'
-                                    }}
-                                    aria-pressed={sel}
-                                  >
-                                    <div style={{ fontSize: 14, color: 'var(--cth-ink-900)' }}>{sel ? '◉ ' : '○ '}{title}</div>
-                                    <div style={{ fontSize: 14, color: 'var(--cth-ink-500)', marginTop: 4 }}>{detail}</div>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      <div style={{ height: 1, background: 'var(--cth-line)' }} />
-
-                      {/* Knowledge Graph — enterprise multimodal context for agents */}
+                      {/* Company knowledge: the documents the team searches, and searching
+                          them by meaning (owner, 2026-10-19). */}
                       <div>
                         <div style={sectionHead}>
                           {t('settings.memory.kg')}
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            <span style={{ fontSize: 13, lineHeight: '20px', color: 'var(--cth-ink-900)' }}>
-                              {t('settings.memory.kgTitle')}
-                            </span>
-                            <span style={{ fontSize: 12, lineHeight: '16px', color: 'var(--cth-ink-500)' }}>
-                              {t('settings.memory.kgDesc')}
-                            </span>
-                          </div>
-                          <PixelButton
-                            variant={kgEnabled ? 'primary' : 'secondary'}
-                            size="sm"
-                            onClick={toggleKg}
-                          >
-                            {kgEnabled ? t('common.on') : t('common.off')}
-                          </PixelButton>
-                        </div>
-                        {kgEnabled && (
+                        {/* Always on (owner, 2026-10-19): no switch; members are pointed
+                            at it once it holds a document. */}
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, lineHeight: '20px', color: 'var(--cth-ink-900)' }}>
+                          {t('settings.memory.kgTitle')}<InfoTip text={t('settings.memory.kgDesc')} />
+                        </span>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
                             <PixelButton variant="secondary" size="sm" onClick={addKgFiles} disabled={kgBusy}>
                               {kgBusy ? t('settings.memory.adding') : t('settings.memory.addFiles')}
@@ -1655,7 +1539,92 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
                             </span>
                             {kgNote && <span style={{ fontSize: 12, color: 'var(--cth-mint)' }}>{kgNote}</span>}
                           </div>
-                        )}
+                        {/* What agents search, and Open to read or edit it (owner, 2026-10-19). */}
+                        <KnowledgeDocList refreshKey={kgDocCount} />
+                        {/* Search by meaning (owner, 2026-10-19): part of company knowledge,
+                            which is all it ever searches; members' memory stays theirs. */}
+                          <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--cth-line)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, lineHeight: '20px', color: 'var(--cth-ink-900)' }}>
+                                {t('settings.memory.meaning.title')}<InfoTip text={t('settings.memory.meaning.tip')} />
+                              </span>
+                              {/* No switch (owner, 2026-10-19): it runs whenever MemPalace is
+                                  installed; this line says whether it is working. */}
+                              {memStatus && (() => {
+                                const st = !memStatus.available
+                                  ? { dot: 'var(--cth-coral)', label: t('memoryPanel.notSetUp') }
+                                  : memStatus.initialized
+                                    ? { dot: 'var(--cth-mint)', label: t('memoryPanel.onReady') }
+                                    : { dot: 'var(--cth-lemon)', label: t('memoryPanel.onGettingReady') };
+                                return (
+                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--cth-ink-900)' }}>
+                                    <span style={{ borderRadius: 'var(--cth-r-md)', width: 8, height: 8, background: st.dot, boxShadow: 'inset 0 0 0 1px var(--cth-line-2)' }} />
+                                    {st.label}
+                                  </span>
+                                );
+                              })()}
+                            </div>
+                            {/* Not installed: send them to the setup that installs it. */}
+                            {memStatus && !memStatus.available && (
+                              <div style={{
+                                borderRadius: 'var(--cth-r-md)',
+                                marginTop: 8, fontSize: 12, color: 'var(--cth-ink-700)', lineHeight: 1.6,
+                                background: 'var(--cth-cream-100)', boxShadow: 'inset 0 0 0 1px var(--cth-line-2)', padding: 10
+                              }}>
+                                {t('memoryPanel.notInstalled')}
+                                <div style={{ marginTop: 8 }}>
+                                  <PixelButton variant="primary" size="sm" onClick={() => setActiveSection('Prerequisites')}>
+                                    {t('memoryPanel.setUpInPrereqs')}
+                                  </PixelButton>
+                                </div>
+                                <div style={{ marginTop: 8, color: 'var(--cth-ink-500)' }}>{t('memoryPanel.plainNotesStill')}</div>
+                              </div>
+                            )}
+
+                            {/* Search language: a benefit framed choice, not a model codename. */}
+                            {memStatus?.available && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 }}>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, lineHeight: '20px', color: 'var(--cth-ink-900)' }}>{t('memoryPanel.searchLanguage')}<InfoTip text={t('settings.memory.meaning.languageTip')} /></span>
+                                <div role="radiogroup" aria-label={t('memoryPanel.searchLanguage')} style={{ display: 'flex', gap: 8 }}>
+                                  {([
+                                    ['minilm', t('memoryPanel.modelFast'), t('memoryPanel.modelFastDetail')],
+                                    ['embeddinggemma', t('memoryPanel.modelMultilingual'), t('memoryPanel.modelMultilingualDetail')]
+                                  ] as const).map(([id, title, detail], i, all) => {
+                                    const sel = embeddingModel === id;
+                                    return (
+                                      <button
+                                        key={id}
+                                        type="button"
+                                        role="radio"
+                                        aria-checked={sel}
+                                        // One tab stop, the picked one; arrows move and pick (the app's option rows).
+                                        tabIndex={sel ? 0 : -1}
+                                        onClick={() => pickEmbeddingModel(id)}
+                                        onKeyDown={(e) => {
+                                          if (['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft'].includes(e.key)) {
+                                            e.preventDefault();
+                                            const step = e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : -1;
+                                            const next = all[(i + step + all.length) % all.length][0];
+                                            pickEmbeddingModel(next);
+                                            (e.currentTarget.parentElement?.querySelector(`[data-model="${next}"]`) as HTMLElement | null)?.focus();
+                                          }
+                                        }}
+                                        data-model={id}
+                                        className={sel ? 'cth-askme-opt is-on' : 'cth-askme-opt'}
+                                        style={{ flex: 1, textAlign: 'start', border: 'none', fontFamily: 'var(--cth-font-ui)' }}
+                                      >
+                                        <span className="cth-askme-dot" aria-hidden="true" />
+                                        <span>
+                                          <span style={{ display: 'block', fontSize: 13, lineHeight: '18px', color: 'var(--cth-ink-900)' }}>{title}</span>
+                                          <span style={{ display: 'block', fontSize: 11, lineHeight: '15px', color: 'var(--cth-ink-500)', marginTop: 2 }}>{detail}</span>
+                                        </span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                          </div>
                       </div>
                     </>
                   )}

@@ -23,8 +23,9 @@ export const OFFICE_FOLDER = 'Office';
 
 const FALLBACK_BUSINESS = 'My Business';
 const MAX_NAME = 60;
-/** Names Windows reserves for devices; a folder by one of these can't be opened there. */
-const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
+/** Names Windows reserves for devices; a folder by one of these can't be opened
+ *  there. Windows reads only the part before the first dot, so `CON.txt` is one. */
+const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i;
 
 /**
  * One safe folder name from anything a person or a pack might supply.
@@ -48,7 +49,8 @@ export function safeFolderName(raw: string, fallback = 'Folder'): string {
 
   if (name.length > MAX_NAME) name = name.slice(0, MAX_NAME).replace(/[.\s]+$/, '');
   if (!name) return fallback;
-  if (WINDOWS_RESERVED.test(name)) name = `${name}-folder`;
+  // The suffix goes before the first dot, so `CON.txt` becomes `CON-folder.txt`.
+  if (WINDOWS_RESERVED.test(name)) name = name.replace(/^[^.]*/, (device) => `${device}-folder`);
   return name;
 }
 

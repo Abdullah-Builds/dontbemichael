@@ -35,7 +35,7 @@ export interface MessageView<M extends HistoryItem = HistoryItem> {
   notices: { scheduled: number; closing: number; other: number; messages: M[] };
 }
 
-const SYSTEM_SENDERS = new Set(['scheduler', 'heartbeat', 'system', 'breaker']);
+const SYSTEM_SENDERS = new Set(['scheduler', 'heartbeat', 'system', 'breaker', 'foundations']);
 const CLOSING = /closing[\s_-]*time/i;
 
 /** Traffic that isn't a handoff: the app's own notes and closing time. */

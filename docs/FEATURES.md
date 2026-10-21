@@ -1,6 +1,6 @@
 # Don't Be Michael: features and changes
 
-Everything the app does today, and every release that got it here (0.0.1 to 0.2.3). Part 1 is
+Everything the app does today, and every release that got it here (0.0.1 to 0.2.4). Part 1 is
 written to be lifted onto the GitHub page and the website as it is; Part 2 is the full list, release
 by release.
 
@@ -88,8 +88,12 @@ moving, and brings you only the decisions that need you.
   notes: to learn what a teammate knows, they ask that teammate, and Michael reads the task board
   and the work each one hands in. On a Mac, Claude members' shells are walled off from each
   other's notes too.
-- Company profile and company knowledge (Word, Excel, PowerPoint, PDF, and scans on a Mac) are
-  shared with the whole team, searchable by meaning.
+- Company profile and company knowledge (Word, Excel, PowerPoint, PDF, and scans or photos on a Mac or a Windows PC) are
+  shared with the whole team, searchable by meaning. Settings lists every document; open one in
+  your own app, save it, and the team searches the new version.
+- Company foundations: one document of what each job needs to know about your business (who you
+  sell to, how you sound, your financial year), filled by you, the company profile and what the
+  team learns. When work needs an empty answer, a card on Needs you asks you once.
 
 ### 6. You stay in charge
 - Every connector on your Claude account (HubSpot, Google Drive, Gmail, QuickBooks and the rest)
@@ -159,6 +163,19 @@ moving, and brings you only the decisions that need you.
   the file was kept.
 
 ## Part 2: Every change, release by release
+
+### 0.2.4 (2026-10-20)
+- Company foundations: one document in company knowledge with plain questions for each job, one
+  answer per shared question, in step with the company profile. Work that hits an empty answer
+  raises one card on Needs you; answer it, have the member draft it, or put it off a week. Pulse
+  shows the jobs that hit an empty answer and a Foundations count under each member.
+- Settings lists every company knowledge document with Open in your own app; a save there is read
+  in again. Company knowledge and search by meaning have no switches, and search by meaning
+  follows your edits.
+- Pulse folds quiet tiles into chips and, in the first two weeks, shows what it sees so far.
+- A file an Ask me question names without its ending opens from its chip.
+- Contributor fixes: scans and photos read on Windows, a lost answer to Michael sent again, a late
+  restart reported, Pulse buttons, its backfill on open and stale cost totals, bounded hook counters.
 
 ### 0.2.3 (2026-10-18)
 - The office opens with a Clocking in card over Michael's desk: how many are in, who is still

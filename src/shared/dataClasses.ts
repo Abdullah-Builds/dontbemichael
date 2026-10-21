@@ -108,10 +108,43 @@ function luhn(digits: string): boolean {
   return sum % 10 === 0;
 }
 
+const isCard = (digits: string): boolean => digits.length >= 13 && digits.length <= 19 && luhn(digits);
+/** How card numbers start: Visa 4, Mastercard 51 to 55 and 22 to 27, Amex 34
+ *  and 37, Diners 30, 36 and 38, JCB 35, Discover 6011 and 65, UnionPay 62.
+ *  Lists of round numbers and years mostly start otherwise, so they are not
+ *  read as a card (owner review: a list of price tiers read as one). */
+const CARD_START = /^(?:4|5[1-5]|2[2-7]|3[04-8]|6011|6[25])/;
+
+/**
+ * Whether a run of digit groups holds a card number: the whole run, one solid
+ * group, or groups printed the way cards are (four digits that start like a
+ * card, then groups of four to six, the last of any length). Reading only the
+ * whole run missed a card written next to its expiry, its security code or
+ * another number ("4111 1111 1111 1111 12/27"): the extra digits failed the
+ * Luhn check.
+ */
+function hasCard(run: string): boolean {
+  const groups = run.split(/[ -]/);
+  if (isCard(groups.join(''))) return true;
+  for (let i = 0; i < groups.length; i++) {
+    if (isCard(groups[i])) return true;
+    if (groups[i].length !== 4 || !CARD_START.test(groups[i])) continue;
+    let digits = groups[i];
+    for (let j = i + 1; j < groups.length && digits.length < 19; j++) {
+      digits += groups[j];
+      if (isCard(digits)) return true;
+      // A group outside four to six digits can only end a card.
+      if (groups[j].length < 4 || groups[j].length > 6) break;
+    }
+  }
+  return false;
+}
+
 const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/;
 // A phone number: an optional +country code, then 9 to 15 digits in groups.
 const PHONE = /(?:^|[^\w])(\+?\d[\d\s().-]{7,}\d)(?![\w])/g;
-const CARD = /(?:\d[ -]?){12,18}\d/g;
+// Digit groups joined by one space or hyphen: "4111 1111 1111 1111 12/27".
+const DIGIT_RUN = /\d+(?:[ -]\d+)*/g;
 const IBAN = /\b[A-Z]{2}\d{2}(?:\s?[A-Z0-9]{4}){2,7}(?:\s?[A-Z0-9]{1,4})?\b/;
 const US_SSN = /\b\d{3}-\d{2}-\d{4}\b/;
 const SECRETS: RegExp[] = [
@@ -138,9 +171,8 @@ export function patternHits(text: string): PatternHit[] {
   const t = typeof text === 'string' ? text.normalize('NFKC').replace(/\p{Default_Ignorable_Code_Point}/gu, '') : '';
   if (SECRETS.some((re) => re.test(t))) hits.push({ classId: 'secrets' });
   if (EMAIL.test(t)) hits.push({ classId: 'contact' });
-  for (const m of t.matchAll(CARD)) {
-    const digits = m[0].replace(/\D/g, '');
-    if (digits.length >= 13 && digits.length <= 19 && luhn(digits)) { hits.push({ classId: 'money' }); break; }
+  for (const m of t.matchAll(DIGIT_RUN)) {
+    if (hasCard(m[0])) { hits.push({ classId: 'money' }); break; }
   }
   if (IBAN.test(t)) hits.push({ classId: 'accounts' });
   if (US_SSN.test(t)) hits.push({ classId: 'accounts' });

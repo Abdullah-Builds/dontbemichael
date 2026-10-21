@@ -54,13 +54,14 @@ export function homeReadyAtLaunch(cfg: { onboardingComplete?: boolean; harnessHo
  * forgets a Done card. The owner's questions to Michael and their state live
  * outside the hive, in private/owner (#63), so they are copied too: without
  * them the conversation with Michael came up empty after a move.
- * Pulse's held list (private/held.jsonl) moves too, so its history is not lost.
+ * Pulse's held list (private/held.jsonl) moves too, so its history is not lost,
+ * and so do the Company foundations record and its list of owner messages.
  * private/agent-mcp stays behind on purpose: it holds mail tokens, which are
  * written again each time a team member starts.
  */
 export function copyOfficeData(oldHome: string, newHome: string): void {
   const pairs = ['hive', 'palace', 'roster.json', 'roster-backups'].map((sub): [string, string] => [join(oldHome, sub), join(newHome, sub)]);
-  for (const f of ['card-guard.json', 'house-rules-seen.json', 'research-stamp.key', 'research-threads.json', 'research-outbox', 'held.jsonl', 'checked.jsonl', 'checked-archive', 'checked-backfill.json']) pairs.push([join(privateRoot(oldHome), f), join(privateRoot(newHome), f)]);
+  for (const f of ['card-guard.json', 'house-rules-seen.json', 'research-stamp.key', 'research-threads.json', 'research-outbox', 'held.jsonl', 'checked.jsonl', 'checked-archive', 'checked-backfill.json', 'foundations.json', 'owner-said.jsonl']) pairs.push([join(privateRoot(oldHome), f), join(privateRoot(newHome), f)]);
   pairs.push([privateOwnerDir(oldHome), privateOwnerDir(newHome)]);
   for (const [src, dest] of pairs) {
     if (!existsSync(src)) continue;

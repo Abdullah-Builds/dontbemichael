@@ -245,7 +245,7 @@ export function swapName(text: string, from: string | undefined, to: string): st
   const f = from?.trim();
   const t = to.trim();
   if (!text || !f || !t || f === t) return text;
-  return text.replace(nameRe(f), t);
+  return text.replace(nameRe(f), () => t);
 }
 
 /**

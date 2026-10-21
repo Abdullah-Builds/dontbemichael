@@ -95,6 +95,9 @@ delete. Esc or `keep` cancels, and focus returns to Delete.
 - If the office pack has `starterMissions` for this agent, show up to 3 below the button
   as "Suggested: <title>, <schedule>" rows, each with an `add` button. Adding one creates
   a **paused** schedule, so nothing runs until the owner turns it on.
+- Render parsed schedules in the owner's language. Keep the remaining starters visible
+  while all existing jobs match this member's pack starters; a custom job hides them.
+- Use a hired member's source card, or the office business type then core for an original member.
 - No pack, or no starters for this agent: copy and button only.
 
 ### 6A. Closed (archived) agents: pause and keep (approved 2026-09-25)
@@ -249,7 +252,7 @@ _Superseded by the eng review task list below; kept for history._
   - Files: `triggers/TriggersTab.tsx`, `CommandCenterPanel.tsx`, `store.ts`
 - [ ] **T4 (P1, human: ~4h / CC: ~20min)**: states (4A, 7A): inline Sure? delete, loading and load-error copy, `missions:save` returns a result, pending and revert on failure.
   - Files: `index.ts` IPC, `preload/index.ts`, `SchedulesSection.tsx`
-- [ ] **T5 (P1, human: ~4h / CC: ~20min)**: empty state with pack starters (5A), added paused.
+- [x] **T5 (P1, human: ~4h / CC: ~20min)**: empty state with pack starters (5A), added paused.
   - Files: `officePack.ts` read path, `SchedulesSection.tsx`
 - [ ] **T6 (P1, human: ~1d / CC: ~40min)**: agent self-scheduling tool (8A): add/edit/pause/delete own schedules only; "added by" on the sub-line; agents told about it in their briefing.
   - Files: `src/main/hive.ts` (tool plus ownership check), `SchedulesSection.tsx`
@@ -697,9 +700,9 @@ None.
 
 Where the build differs from the plan, and why:
 
-- **5A starter jobs deferred.** No shipped pack in `resources/packs/` has `starterMissions`, and the
-  field's `schedule` is a free string with no defined format. The empty tab ships with the named copy
-  and the add button; the suggestions are a TODOS.md item (Schedules).
+- **5A starter jobs built (2026-10-18).** Valid pack starters appear as up to three
+  suggestions, with localized schedule wording and one-click paused creation. Remaining
+  starters stay available after adding one; a custom job hides the suggestions.
 - **Font for chips and tab labels.** The 14px-floor decision named Pixelify Sans, but the app no longer
   bundles it (`design/tokens.css`). Chips and the agent tab labels use Inter (`--cth-font-ui`) at 14px.
 - **Agents can `list` their schedules.** A request needs the schedule's id, so `op: "list"` answers

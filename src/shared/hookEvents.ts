@@ -24,10 +24,28 @@ export interface HookEvent {
   /** PreToolUse and PostToolUse: the call's id (Claude's tool_use_id), so
    *  parallel calls can be told apart. */
   toolUseId?: string;
+  /** PostToolBatch only: the id of every call in the finished batch,
+   *  including the ones the engine refused on its own. */
+  toolUseIds?: string[];
   blocked?: boolean;
 }
 
 const OPTIONAL_STRING_FIELDS = ['tool', 'notificationType', 'source', 'message', 'detail', 'toolUseId'] as const;
+
+/** At most this many ids of one finished batch reach the panel. */
+export const MAX_BATCH_TOOL_USE_IDS = 256;
+
+const isToolUseId = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= 128;
+
+/** PostToolBatch: the ids its tool_calls list names. An entry without a
+ *  usable id is dropped, and a missing list names none. */
+export function batchToolUseIds(calls: unknown): string[] {
+  if (!Array.isArray(calls)) return [];
+  return calls
+    .map((c) => (c && typeof c === 'object' ? (c as { tool_use_id?: unknown }).tool_use_id : undefined))
+    .filter(isToolUseId)
+    .slice(0, MAX_BATCH_TOOL_USE_IDS);
+}
 
 /** Validate an untrusted payload before it crosses the Electron IPC boundary. */
 export function validateHookEvent(value: unknown): value is HookEvent {
@@ -43,6 +61,8 @@ export function validateHookEvent(value: unknown): value is HookEvent {
   for (const field of OPTIONAL_STRING_FIELDS) {
     if (candidate[field] !== undefined && typeof candidate[field] !== 'string') return false;
   }
+  const ids = candidate.toolUseIds;
+  if (ids !== undefined && !(Array.isArray(ids) && ids.length <= MAX_BATCH_TOOL_USE_IDS && ids.every(isToolUseId))) return false;
 
   return candidate.blocked === undefined || typeof candidate.blocked === 'boolean';
 }

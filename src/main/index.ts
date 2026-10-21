@@ -2,6 +2,7 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, net, powerMonitor
 import { ownerLedger } from '../shared/taskLedger';
 import { ownValue } from '../shared/ownValue';
 import { cutText } from '../shared/cutText';
+import { MAX_NAMES } from '../shared/askFiles';
 import { copyableLink, DEFAULT_COPY_LINK_LABEL, menuLabel } from '../shared/linkMenu';
 import { readCodexContext } from './codexUsage';
 import { execFile, spawn } from 'node:child_process';
@@ -19,6 +20,10 @@ import { PtyManager, type ProcessLaunch, type SpawnOptions } from './pty';
 import { resolveCommand as resolveCliCommand, isSafeCommandName, userShellPath } from './shellEnv';
 import { buildPtyEnv } from './ptyEnv';
 import { isSameOrInside } from './pathInside';
+import { Foundations, publishCopy } from './foundations';
+import { KnowledgeEdits } from './knowledgeEdits';
+import { FOUNDATION_JOBS, jobOf, knowledgeNoticeDue, michaelFoundations, sectionFor, type FoundationJob } from '../shared/foundations';
+import type { DepartmentSource } from '../shared/officeRoles';
 import {
   apiKeyShapeOk, checkAnthropicKey, claudeInstallScript, claudeMissingScript, ENGINE_INSTALL_PTY, ENGINE_SIGNIN_PTY,
   claudeAuthStatusCommand, findClaudeFast, isEngineSetupPty, makeClaudeAuthReader, makeNoticeCoalescer, readEngineSetupStatus,
@@ -32,10 +37,10 @@ import { initAutoUpdater, abortPendingRestart } from './updater';
 import { RealtimeFloorWatcher } from './realtimeFloorWatcher';
 import {
   readConfig, damagedConfigCopy, writeConfig, setAgentTokenCap, resetConfig, onConfigWritten, ensureHarnessHome, ensureClaudePermissionsAccepted, approveClaudeApiKey,
-  modelForRole, OPS_STANDUP_MISSION, OPS_STANDUP_BUILT_IN_BODIES, OPS_STANDUP_FOCUS, OPS_STANDUP_BUILT_IN_FOCUSES, HEARTBEAT_MISSION, COMPACT_MAINTENANCE_MISSION, type HarnessConfig, type ScheduledMission
+  modelForRole, OPS_STANDUP_MISSION, OPS_STANDUP_BUILT_IN_BODIES, OPS_STANDUP_FOCUS, OPS_STANDUP_BUILT_IN_FOCUSES, HEARTBEAT_MISSION, heartbeatMessage, COMPACT_MAINTENANCE_MISSION, FOUNDATIONS_CHECK_MISSION, type HarnessConfig, type ScheduledMission
 } from './config';
 import { terminalLaunches } from './terminalAtFolder';
-import { listDir, readFileText, readFileBinary, writeFileText, statAbs, expandTilde, askFileVerdict, askFileRootsFor, resolveAskFileRoots, readAskFile, isPackageDir, type AskFileAgent } from './fs';
+import { listDir, readFileText, readFileBinary, writeFileText, statAbs, expandTilde, askFileVerdict, askFileByName, askFileRootsFor, resolveAskFileRoots, readAskFile, isPackageDir, type AskFileAgent } from './fs';
 import { answerMessages, cardConversation, mergeHumanQA, MICHAEL_ID, raiserOf } from '../shared/askMeRouting';
 import { FIRST_TASK_EDITED_MAX, firstTaskCard, firstTaskCardFromText } from '../shared/firstTask';
 import { answerKey, catchUpRequests, OwnerAnswerRetry, ownerWorkOrder } from '../shared/ownerRequests';
@@ -502,6 +507,7 @@ const hookServer = new HookServer(
   memberPresent,
   (signal) => onPlanSignal(signal),
   quickbooksApprovals
+  (agentId) => foundationsForAgent(agentId)
 );
 // Pulse's Kept safe: each step a setting stopped, by gate (proposal 3).
 hookServer.onRefused = (agentId, gate) => pulseTelemetry.record({ agentId: agentId ?? null, kind: 'refused', ts: Date.now(), attrs: { gate } });
@@ -514,7 +520,9 @@ hookServer.restartStuck = (agentId) => {
 };
 const memory = new MemoryManager(
   () => readConfig().harnessHome,
-  () => { const c = readConfig(); return { enabled: c.semanticMemory !== false, model: c.embeddingModel ?? 'minilm' }; },
+  // Search by meaning runs whenever MemPalace is installed (owner, 2026-10-19:
+  // no switch; installing it in Prerequisites is the choice).
+  () => ({ enabled: true, model: readConfig().embeddingModel ?? 'minilm' }),
   // Company knowledge, indexed into the palace for searching by meaning.
   () => knowledge.meaningMirror()
 );
@@ -542,14 +550,29 @@ function companyProfileForAgents(): string | null {
 }
 
 /** MemPalace, for agents to search company knowledge by meaning: only when it's
- *  installed and on, and company knowledge is on. */
-function meaningSearch(): { bin: string; palace: string } | undefined {
+ *  installed and company knowledge holds a document. */
+function meaningSearch(): { bin: string; palace: string; model: string } | undefined {
   const bin = memory.bin();
   const palace = memory.palacePath();
-  return memory.active() && knowledge.active() && bin && palace ? { bin, palace } : undefined;
+  return memory.active() && knowledge.hasDocuments() && bin && palace ? { bin, palace, model: memory.model() } : undefined;
 }
 // Company knowledge: file-backed store + agent CLI (default ON).
 const knowledge = new KnowledgeManager();
+/** Documents the owner opened from Settings: a save is read in again (owner, 2026-10-19). */
+const knowledgeEdits = new KnowledgeEdits({
+  docFile: (id) => knowledge.docFile(id),
+  textFile: (id) => knowledge.textFile(id),
+  reindex: (id) => knowledge.reindex(id),
+  openPath: (p) => shell.openPath(p),
+  tempDir: () => app.getPath('temp'),
+  changed: (id, error) => {
+    if (!error) memory.companyKnowledgeChanged(); // search by meaning reads the new text
+    try { liveWebContents()?.send('kg:changed', { id, ...(error ? { error } : {}) }); } catch { /* window gone */ }
+  }
+});
+// Read only copies hold the office's text: none outlives the run that made it.
+knowledgeEdits.clearCopies(true);
+app.on('will-quit', () => { knowledgeEdits.stopAll(); knowledgeEdits.clearCopies(); });
 // Keeps each agent's memory index useful (owner, 2026-09-25): agents add notes
 // to memory/inbox.md and this turns them into itemised changes on Haiku, in
 // the background. It replaces the old whole-file condenser (reflect.ts).
@@ -705,6 +728,60 @@ ipcMain.handle('silent:checkAgain', (_evt, id: unknown) => { if (typeof id === '
 const pulseOffice = (): string | null => { const h = readConfig().harnessHome; return h ? expandTilde(h) : null; };
 const pulseTelemetry = new TelemetryStore(() => persist.database(), pulseOffice);
 const pulseProcessor = new TelemetryProcessor(() => persist.database(), pulseTelemetry);
+
+/** The team as Company foundations reads it, from one read of the registry
+ *  and the roster (the hook asks on every prompt): each member's job (read
+ *  like its studio department; Michael, Research and assistants have none),
+ *  the jobs the office has, and names. */
+function foundationsTeam(): { jobs: Record<string, FoundationJob[]>; office: FoundationJob[]; nameOf: (id: string) => string; godId: string | null } {
+  const reg = hive.registry();
+  const jobs: Record<string, FoundationJob[]> = {};
+  const entries = (roster.read()?.agents ?? []).filter((e): e is DepartmentSource & { isGod?: boolean } => !!e && typeof e === 'object' && typeof (e as { id?: unknown }).id === 'string');
+  for (const e of entries) {
+    const meta = reg.agents?.[e.id];
+    if (e.isGod || e.id === RESEARCH_ID || meta?.isGod || meta?.isAssistant || meta?.isResearch || e.id === reg.godId) continue;
+    const job = jobOf(e);
+    jobs[e.id] = job ? [job] : [];
+  }
+  const all = new Set(Object.values(jobs).flat());
+  return { jobs, office: FOUNDATION_JOBS.filter((j) => all.has(j)), nameOf: (id) => foundationsNameOf(id, reg), godId: reg.godId ?? null };
+}
+/** A member's or Michael's name for the foundations, from the registry alone. */
+function foundationsNameOf(id: string, reg = hive.registry()): string {
+  if (id === 'owner') return 'the owner';
+  return id === reg.godId || id === 'god' ? resolveGodName(reg.agents?.[reg.godId ?? 'god']?.name) : (reg.agents?.[id]?.name ?? id);
+}
+/** Company foundations' one writer (main/foundations.ts). */
+const foundations = new Foundations({
+  home: () => { const h = readConfig().harnessHome; return h ? expandTilde(h) : null; },
+  record: (ev) => pulseTelemetry.record(ev),
+  publish: (text) => publishCopy(knowledge, text, () => memory.companyKnowledgeChanged()),
+  exists: (id) => !!knowledge.get(id),
+  jobs: () => foundationsTeam().office,
+  jobsOf: (id) => foundationsTeam().jobs[id] ?? [],
+  // Names only: the registry, not the whole team (a document names each learned answer's member).
+  nameOf: (id) => foundationsNameOf(id),
+  godId: () => hive.registry().godId ?? null,
+  profile: () => cleanCompanyProfile(readConfig().companyProfile),
+  // office.json too, as a Settings save does: an adopted office restores the profile from it.
+  setProfile: (patch) => { const next = writeConfig({ companyProfile: { ...cleanCompanyProfile(readConfig().companyProfile), ...patch } }); syncOfficeRecord(next); },
+  ownerSaid: (id, recipient) => hive.ownerSaid(id, recipient),
+  inOffice: (path, agentId) => {
+    try { if (!statSync(path).isFile()) return false; } catch { return false; }
+    const cfg = readConfig();
+    const cwd = hive.registry().agents?.[agentId]?.cwd;
+    return [cfg.businessFolder, cfg.officeFolder, cwd].some((root) => typeof root === 'string' && !!root && isSameOrInside(expandTilde(root), path));
+  },
+  tell: (to, subject, body) => { if (hive.enabled()) hive.send({ to, act: 'inform', subject, body }, 'foundations'); },
+  changed: () => { try { liveWebContents()?.send('foundations:changed'); } catch { /* window gone */ } }
+});
+/** What an agent carries of the foundations: its job's part, or all of it for
+ *  Michael. Research is left out by the hook itself. */
+function foundationsForAgent(agentId: string): string | null {
+  const team = foundationsTeam();
+  if (agentId === team.godId || agentId === 'god') return michaelFoundations(foundations.read(), team.office, team.nameOf);
+  return sectionFor(foundations.read(), team.jobs[agentId] ?? [], team.nameOf);
+}
 /** Pulse's backfill (proposal 3): once per office, the weeks before Pulse began,
  *  read in the background from the office log, members' sessions and the cost
  *  ledger. The view refreshes when it lands. */
@@ -753,6 +830,8 @@ const pulse = new PulseService({
   processor: pulseProcessor,
   office: pulseOffice,
   members: () => Object.entries(hive.registry().agents).filter(([, a]) => !a.archived && !a.isAssistant).map(([id, a]) => ({ id, isGod: !!a.isGod })),
+  memberJobs: () => foundationsTeam().jobs,
+  foundationsAnswers: () => foundations.read().answers,
   godId: () => hive.registry().godId ?? null,
   tasks: () => { const t = hive.tasks() as { tasks?: unknown }; return Array.isArray(t?.tasks) ? (t.tasks as never) : []; },
   missions: () => readConfig().missions ?? [],
@@ -1015,7 +1094,9 @@ function researchFolders(): string[] {
 const integrationBroker = new IntegrationBroker({
   getRecord: integrations.getRecord,
   getSecret: integrations.getSecret,
-  mail: SHOW_MAILBOXES ? (agentId, op, body) => handleMailRequest(mailService, { getConfig: () => readConfig(), audit: (event) => { try { hive.appendLog(event); } catch { /* best-effort */ } }, proposals: mailApprovals, fitCheck: standingFit, present: memberPresent, log: (line) => console.log(line) }, agentId, op, body) : undefined
+  // Same folder as the mail send journal, never the hive agents can read.
+  journalPath: join(app.getPath('userData'), 'broker-write-journal.json'),
+  mail: SHOW_MAILBOXES ? (agentId, op, body) => handleMailRequest(mailService, { getConfig: () => readConfig(), audit: (event) => { try { hive.appendLog(event); } catch { /* best-effort */ } }, proposals: mailApprovals, fitCheck: standingFit, present: memberPresent, log: (line) => console.log(line), tellMichael: (subject, text) => { if (hive.enabled()) hive.send({ to: hiveGodId(), act: 'inform', subject, body: text }, 'mail'); } }, agentId, op, body) : undefined
 });
 
 /** Absolute path to the bundled md-mail MCP server (same resolution as the
@@ -1779,6 +1860,17 @@ function ensureDefaultMissions(): void {
     });
   }
 
+  // The weekly Foundations check (office-foundations.md, eng D3), once.
+  const cfgF = readConfig();
+  if (!cfgF.foundationsCheckSeeded) {
+    const missions = cfgF.missions ?? [];
+    const has = missions.some((m) => m.id === FOUNDATIONS_CHECK_MISSION.id);
+    writeConfig({
+      missions: has ? missions : [...missions, { ...FOUNDATIONS_CHECK_MISSION, lastFiredAt: Date.now() }],
+      foundationsCheckSeeded: true
+    });
+  }
+
   // maint-1 RETIREMENT: `compact-maintenance` is no longer a mission. Scheduled
   // compaction is now the CONTEXT TRIGGER's job, so the operator has exactly one
   // control (a cadence + a pressure gate + an editable message) instead of two
@@ -2394,7 +2486,9 @@ function armHeartbeat(m: ScheduledMission): void {
       // worker's reply doesn't sit unread while other agents keep the floor busy.
       const actionable = godActionableInboxCount();
       if (isFloorQuiet(quiet) || actionable > 0) {
-        reengageGod(buildHeartbeatDigest(quiet, actionable));
+        // Read each beat, so an edit to the heartbeat box counts from the next one.
+        const body = readConfig().missions?.find((x) => x.id === m.id)?.body;
+        reengageGod(heartbeatMessage(body, buildHeartbeatDigest(quiet, actionable)));
         next = Math.round(base * 2.5);            // back off after re-engaging
       } else if (looksStuck(quiet)) {
         next = Math.max(30_000, Math.round(base / 4)); // tighten when an agent is wedged
@@ -4079,7 +4173,7 @@ async function spawnAgentCore(opts: AgentSpawnOptions, owner: Electron.WebConten
             homedir()
           )
         } : {
-          knowledgeGraph: knowledge.active(),
+          knowledgeGraph: knowledge.hasDocuments(),
           // Bake the ABSOLUTE KG CLI path into the agent's prompt. The prompt used
           // to spell it `$KG_CLI`, which is POSIX-only: under cmd.exe/PowerShell it
           // expands to nothing, so every knowledge-graph instruction was dead on a
@@ -4700,14 +4794,23 @@ ipcMain.handle('config:update', (_evt, patch: Partial<HarnessConfig>) => {
   // transition so ordinary config writes never re-enter it.
   const hiveWasEnabled = hive.enabled();
   const wasOnboarded = readConfig().onboardingComplete;
+  const modelBefore = readConfig().embeddingModel ?? 'minilm';
+  const profileBefore = cleanCompanyProfile(readConfig().companyProfile);
   const next = writeConfig(patch);
   // The office describes itself in <home>/office.json, so a reinstall finds it
   // by folder rather than by the business name typed into setup. Only a save
   // that changes the office's own fields writes it: switching offices changes
   // harnessHome alone, and must not copy one office's team into another.
   if (touchesOffice(patch)) syncOfficeRecord(next);
-  // Company knowledge just turned on: index it for search by meaning now.
-  if (patch && typeof patch === 'object' && 'knowledgeGraph' in patch) memory.companyKnowledgeChanged();
+  // The store moved (rootPath): index it for search by meaning now.
+  if (patch && typeof patch === 'object' && 'knowledgeGraph' in patch) {
+    memory.companyKnowledgeChanged();
+    // Opened documents belong to the old store: a save there would be read into nothing.
+    knowledgeEdits.stopAll();
+  }
+  // A new search language: the index was built with the other model, which
+  // MemPalace refuses to search with, so it is built again (owner, 2026-10-19).
+  if (patch && typeof patch === 'object' && 'embeddingModel' in patch && (next.embeddingModel ?? 'minilm') !== modelBefore) memory.modelChanged();
   // Live opt-in/out from Settings (TELEMETRY.md); stays off while
   // COLLECT_USAGE_STATS is false.
   if (typeof patch?.telemetryEnabled === 'boolean') analytics.setEnabled(COLLECT_USAGE_STATS && patch.telemetryEnabled);
@@ -4721,6 +4824,8 @@ ipcMain.handle('config:update', (_evt, patch: Partial<HarnessConfig>) => {
   // config per tick so it gates immediately; this is for the PROMPT, which is
   // built per spawn, so flipping the toggle reaches god the next time he starts.
   if (typeof patch?.orchestratorMaySpawn === 'boolean') hive.setOrchestratorMaySpawn(patch.orchestratorMaySpawn);
+  // The company profile and the foundations hold one set of facts (eng finding 6).
+  if (patch && typeof patch === 'object' && 'companyProfile' in patch) { try { foundations.profileChanged(profileBefore); } catch (e) { console.error('[foundations] profile', e); } }
   if (!hiveWasEnabled && hive.enabled()) {
     console.log('[hive] harnessHome configured — bootstrapping hive services');
     try { bootstrapHiveServices(); } catch (e) { console.error('[hive] bootstrap after onboarding:', e); }
@@ -4946,6 +5051,19 @@ ipcMain.handle('fs:askFiles', async (_evt, paths: unknown, who: unknown) => {
   return Promise.all(paths.slice(0, 20).map((p) => (askFilePathOk(p)
     ? askFileVerdict(p, roots).then((r) => ({ verdict: r.verdict, tab: r.tab, path: r.path }))
     : { verdict: 'missing' as const, tab: false, path: String(p) })));
+});
+
+/** Files a question names without their ending (owner, 2026-10-19): each name
+ *  found in the office's folders, with what it can do; a name with no file is
+ *  left out, so it stays plain text. */
+ipcMain.handle('fs:askFileNames', async (_evt, names: unknown, who: unknown) => {
+  if (!Array.isArray(names)) return {};
+  const roots = await resolveAskFileRoots(askFileRoots(who));
+  const out: Record<string, { verdict: 'open' | 'reveal' | 'missing'; tab: boolean; path: string }> = {};
+  const wanted = [...new Set(names.slice(0, MAX_NAMES).filter((n): n is string => askFilePathOk(n)))];
+  const found = await Promise.all(wanted.map((n) => askFileByName(n, roots)));
+  wanted.forEach((n, i) => { const f = found[i]; if (f) out[n] = f; });
+  return out;
 });
 
 /** Where a file sits, in office terms, for the file tab's folder line
@@ -5472,6 +5590,14 @@ function turnResearchOff(): number {
   try { return hive.returnResearchInbox(); } catch (e) { console.error('[research] return inbox failed', e); return 0; }
 }
 ipcMain.handle('research:off', () => ({ ok: true, returned: turnResearchOff() }));
+// Company knowledge has no switch (owner, 2026-10-19): an owner who had turned
+// it off, with documents of their own in it, is told once that the team can
+// search them now.
+ipcMain.handle('kg:notice', () => {
+  const cfg = readConfig();
+  try { return { notice: knowledgeNoticeDue(cfg.knowledgeGraph?.enabled, cfg.knowledgeOnNoticeSeen, () => knowledge.list()) }; } catch { return { notice: false }; }
+});
+ipcMain.handle('kg:noticeSeen', () => { writeConfig({ knowledgeOnNoticeSeen: true }); return { ok: true }; });
 /** The one time update card was read (Got it or Open Research settings). */
 ipcMain.handle('research:noticeSeen', () => {
   const cfg = readConfig();
@@ -5529,7 +5655,8 @@ ipcMain.handle('hive:rememberOwnerAnswer', (_evt, p: unknown) => {
 ipcMain.handle('hive:send', (_evt, partial: Partial<HiveMessage>, from: unknown) => {
   if (!hive.enabled()) return { ok: false, error: 'hive disabled (no harnessHome)' };
   const sender = typeof from === 'string' ? from : 'system';
-  const msg = hive.send(partial ?? {}, sender);
+  // A 'human' send from the window is the owner's own (ownerSaid trusts only these).
+  const msg = hive.send(partial ?? {}, sender, undefined, sender === 'human');
   // Count only what a PERSON sent. Every renderer surface that dispatches on a
   // human's behalf passes 'human' (Command Center dispatch, thread replies, ASK
   // ME answers); agent-to-agent traffic passes the agent id and would swamp the
@@ -6199,10 +6326,6 @@ ipcMain.handle('tools:status', (): ToolStatus[] => {
 // the mine loop that boot's start() had to skip — otherwise the pill reads
 // "getting ready" until the app is restarted.
 ipcMain.handle('hive:memoryStatus', () => memory.refresh());
-ipcMain.handle('hive:searchMemory', (_evt, query: unknown, wing: unknown) => {
-  if (typeof query !== 'string' || !query.trim()) return { ok: false, output: '', error: 'empty query' };
-  return memory.search(query, { wing: typeof wing === 'string' ? wing : undefined });
-});
 ipcMain.handle('hive:memoryWakeUp', (_evt, wing: unknown) =>
   memory.wakeUp(typeof wing === 'string' ? wing : undefined));
 ipcMain.handle('hive:mineNow', () => { memory.mineNow(); return { ok: true }; });
@@ -6220,7 +6343,11 @@ ipcMain.handle('kg:search', (_evt, query: unknown, limit: unknown) => {
 });
 ipcMain.handle('kg:get', (_evt, id: unknown) =>
   (typeof id === 'string' && id ? knowledge.get(id) : null));
+// Open a document in the owner's own app; a save there is read in again.
+ipcMain.handle('kg:open', (_evt, id: unknown) =>
+  (typeof id === 'string' && id ? knowledgeEdits.open(id).catch((e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) })) : { ok: false as const, error: 'missing' }));
 ipcMain.handle('kg:remove', (_evt, id: unknown) => {
+  if (typeof id === 'string') knowledgeEdits.stop(id);
   const ok = typeof id === 'string' && id ? knowledge.remove(id) : false;
   if (ok) memory.companyKnowledgeChanged(); // drop it from search by meaning too
   return { ok };
@@ -6395,6 +6522,17 @@ ipcMain.handle('app:cancelClosingTime', () => closingTime.cancel());
 /** The closing-time dialog's Remind and Close without them (owner, 2026-09-29). */
 ipcMain.handle('app:closingTimeRemind', (_evt, id: unknown) => closingTime.remind(id));
 ipcMain.handle('app:closingTimeExcuse', (_evt, id: unknown) => closingTime.excuse(id));
+// The last thing each waiting agent said and when, so the owner can tell a
+// long job from a stuck one (closing time rows).
+ipcMain.handle('app:closingTimeSaid', (_evt, ids: unknown) => {
+  const said: Record<string, { text: string; at?: number }> = {};
+  if (!Array.isArray(ids)) return said;
+  for (const id of ids.slice(0, 50)) {
+    const line = typeof id === 'string' ? hookServer.latestLine(id) : undefined;
+    if (line) said[id] = line;
+  }
+  return said;
+});
 
 // ─── IPC: full reset (wipe data + config, relaunch into onboarding) ──────────
 ipcMain.handle('app:resetAll', () => {
@@ -6433,6 +6571,8 @@ ipcMain.handle('app:resetAll', () => {
   const resetHome = readConfig().harnessHome;
   const userData = app.getPath('userData');
   const kgRoot = knowledge.root();
+  knowledgeEdits.stopAll();
+  knowledgeEdits.clearCopies(true);
   const failed = eraseOfficeData({
     home: resetHome ? expandTilde(resetHome) : null,
     userData,
@@ -6650,6 +6790,12 @@ ipcMain.handle('pulse:learned', (_evt, from: unknown, to: unknown) => {
 // checked here. A record that can't be read rejects, so the list says so.
 ipcMain.handle('pulse:checked', (_evt, fromMs: unknown, toMs: unknown, way: unknown) =>
   (typeof fromMs === 'number' && typeof toMs === 'number' && Number.isFinite(fromMs) && Number.isFinite(toMs) && (way === 'in' || way === 'out') ? pulse.checked(fromMs, toMs, way) : { rows: [], since: null }));
+// Company foundations (office-foundations.md): the foundation card reads the
+// record and writes the owner's answer, a draft request or Not now.
+ipcMain.handle('foundations:get', () => foundations.view());
+ipcMain.handle('foundations:answer', (_evt, id: unknown, text: unknown) => foundations.ownerAnswer(id, text));
+ipcMain.handle('foundations:draft', (_evt, id: unknown, memberId: unknown) => foundations.requestDraft(id, memberId));
+ipcMain.handle('foundations:snooze', (_evt, id: unknown) => foundations.snooze(id));
 ipcMain.handle('pulse:snapshot', (_evt, period: unknown, compare: unknown) => {
   // Opening Pulse starts the backfill too, not only the 30 s beat, so a first
   // look right after an update gets the past weeks (the view refreshes when
@@ -7811,6 +7957,8 @@ function bootstrapHiveServices(): void {
   // A business office gets the plain PROTOCOL.md and no COMMANDS.md.
   hive.setBusinessOffice(!!(readConfig().businessFolder || readConfig().officeFolder));
   hive.onScheduleRequest(receiveScheduleRequest);
+  hive.onFoundations((actor, payload) => foundations.handle(actor, payload));
+  try { foundations.seed(); } catch (e) { console.error('[foundations] seed', e); }
   hive.setTrustLayer(trustLayer);
   hive.setResearchEnabled(() => !!readConfig().research?.on);
   hive.setResearchName(() => readConfig().research?.name);

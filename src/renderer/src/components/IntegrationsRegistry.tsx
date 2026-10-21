@@ -79,9 +79,9 @@ function usable(r: { enabled: boolean; authType: IntegrationAuthType; hasSecret:
   return r.enabled && (!needsSecret(r.authType) || r.hasSecret);
 }
 
-function draftFromTemplate(t: IntegrationTemplate, now: number): Draft {
+function draftFromTemplate(t: IntegrationTemplate, now: number, takenIds: string[]): Draft {
   return {
-    isNew: true, id: slugify(t.idSuggestion || t.label), label: t.label, kind: t.kind,
+    isNew: true, id: slugify(t.idSuggestion || t.label, takenIds), label: t.label, kind: t.kind,
     baseUrl: t.baseUrl, authType: t.authType, authHeader: t.authHeader ?? '',
     enabled: true, hasSecret: false, createdAt: now, secret: ''
   };
@@ -114,6 +114,9 @@ export function IntegrationsRegistry() {
 
   const flash = (msg: string) => { setNote(msg); setTimeout(() => setNote(''), 2400); };
   const refresh = async () => setRecords(await integrationsClient.list());
+  // A new integration never takes an id in use: saving under one replaces
+  // that integration and its secret (upsertRecord in src/main/integrations.ts).
+  const takenIds = records.map((r) => r.id);
 
   useEffect(() => {
     let alive = true;
@@ -130,7 +133,7 @@ export function IntegrationsRegistry() {
   const continueFromGallery = () => {
     const t = templates.find((x) => x.idSuggestion === picked);
     if (!t) return;
-    setDraft(draftFromTemplate(t, Date.now())); setReplacing(false); setShowSecret(false); setCfgTest(null); setErr(''); setView('configure');
+    setDraft(draftFromTemplate(t, Date.now(), takenIds)); setReplacing(false); setShowSecret(false); setCfgTest(null); setErr(''); setView('configure');
   };
   const startEdit = (r: IntegrationRecordView) => { setDraft(draftFromRecord(r)); setReplacing(false); setShowSecret(false); setCfgTest(null); setErr(''); setView('configure'); };
 
@@ -264,7 +267,7 @@ export function IntegrationsRegistry() {
         {/* Label */}
         <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
           <span style={fieldLabel}>{tr('integrations.label')}</span>
-          <input value={draft.label} onChange={(e) => patch({ label: e.target.value, ...(draft.isNew ? { id: slugify(e.target.value) } : {}) })} placeholder={`e.g. ${tpl?.label ?? 'My API'} (prod)`} style={inputStyle} />
+          <input value={draft.label} onChange={(e) => patch({ label: e.target.value, ...(draft.isNew ? { id: slugify(e.target.value, takenIds) } : {}) })} placeholder={`e.g. ${tpl?.label ?? 'My API'} (prod)`} style={inputStyle} />
           <span style={hint}>{tr('integrations.labelHint')}: <code style={{ fontFamily: 'var(--cth-font-mono)' }}>{slugify(draft.id || draft.label) || '·'}</code>{draft.isNew ? '' : ` (${tr('integrations.fixed')})`}</span>
         </label>
 

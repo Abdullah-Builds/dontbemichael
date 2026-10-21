@@ -248,6 +248,24 @@ canvas { image-rendering: pixelated; image-rendering: crisp-edges; }
   * { animation-duration: 0s !important; transition-duration: 0s !important; }
 }
 
+/* Pulse (docs/designs/pulse-smart-view.md): a quiet tile's chip (5A), and a
+   tile or chip that just moved between the grid and the chip row (3A). */
+.cth-quiet-chip {
+  height: 26px; padding: 0 10px; display: inline-flex; align-items: center; gap: 6px;
+  border: none; border-radius: var(--cth-r-pill); background: var(--cth-neutral-soft);
+  color: var(--cth-ink-3); font-family: var(--cth-font-ui); cursor: pointer;
+}
+.cth-quiet-chip:hover { background: var(--cth-card); box-shadow: inset 0 0 0 1px var(--cth-line-2); }
+.cth-quiet-chip-name { font-size: 11px; line-height: 15px; color: var(--cth-ink-2); }
+.cth-quiet-chip-n { font-family: var(--cth-font-mono); font-size: 11px; line-height: 15px; color: var(--cth-ink-3); }
+/* Company foundations pills on Pulse: the strip's jobs and member detail's questions. */
+.cth-foundation-pill { transition: box-shadow var(--cth-dur-fast) var(--cth-ease); }
+.cth-foundation-pill:hover { box-shadow: inset 0 0 0 1px var(--cth-line-2); }
+.cth-foundation-pill:focus-visible { outline: 2px solid var(--cth-indigo); outline-offset: 2px; }
+.cth-tile-in { animation: cth-tile-in 150ms var(--cth-ease) both; }
+@keyframes cth-tile-in { from { opacity: 0; transform: translateY(4px); } }
+@media (prefers-reduced-motion: reduce) { .cth-tile-in { animation: none; } }
+
 /* xterm: disable font ligatures.
  * Some browsers (e.g. Firefox 130+) treat sequences like "ff"/"ft"/"fi" as
  * ligatures, which breaks xterm's per-char width measuring: an "f" gets measured
@@ -639,7 +657,8 @@ canvas { image-rendering: pixelated; image-rendering: crisp-edges; }
 .cth-askme-q p:first-child { margin-top: 0; }
 .cth-askme-q p:last-child { margin-bottom: 0; }
 .cth-splitter .cth-splitter-grip { opacity: 0; transition: opacity 120ms var(--cth-ease); }
-.cth-splitter:hover .cth-splitter-grip { opacity: .9; }
+.cth-splitter:hover .cth-splitter-grip,
+.cth-splitter:focus-visible .cth-splitter-grip { opacity: .9; }
 
 /* Talk to Michael (DESIGN.md 7.19): its ring, and a focus ring around the whole
    composer while its message box has focus. */

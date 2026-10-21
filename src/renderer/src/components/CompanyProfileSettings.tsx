@@ -1,7 +1,7 @@
 import { useState, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { HarnessConfig } from '@/store/config';
-import { cityLine, cleanCompanyProfile, missingProfileFields, type CompanyProfile } from '@shared/companyProfile';
+import { cityLine, cleanCompanyProfile, mergeEditedProfile, missingProfileFields, type CompanyProfile } from '@shared/companyProfile';
 import { CompanyProfileFields } from './CompanyProfileFields';
 import { PixelButton } from './PixelButton';
 
@@ -18,6 +18,8 @@ export function CompanyProfileSettings({ config, onOpenKnowledge }: {
   const { t } = useTranslation();
   const [name, setName] = useState(config.businessName ?? '');
   const [profile, setProfile] = useState<CompanyProfile>(() => cleanCompanyProfile(config.companyProfile));
+  // The profile as the page opened: a save sends only what the owner changed since.
+  const [opened, setOpened] = useState<CompanyProfile>(() => cleanCompanyProfile(config.companyProfile));
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle');
   // No business type fit at setup ("Something else"): the industry is in the owner's words.
   const needsIndustry = !config.businessType;
@@ -27,12 +29,15 @@ export function CompanyProfileSettings({ config, onOpenKnowledge }: {
   const save = async () => {
     setStatus('saving');
     try {
-      const clean = cleanCompanyProfile(profile);
+      const latest = cleanCompanyProfile((await window.cth.getConfig()).companyProfile);
+      const clean = mergeEditedProfile(opened, cleanCompanyProfile(profile), latest);
       await window.cth.updateConfig({
         businessName: name.trim() || config.businessName,
         companyProfile: clean,
         businessCity: cityLine(clean.address) ?? config.businessCity
       });
+      setOpened(clean);
+      setProfile(clean);
       setStatus('saved');
     } catch {
       setStatus('failed');

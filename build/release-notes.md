@@ -1,5 +1,5 @@
-- **Clocking in** shows your team arriving.
-- **Waiting cards** come back on their date.
-- **Pulse** lists what the team learned.
-- **Run a job now** from its schedule.
-- **Members' notes** stay their own.
+- **Company foundations** for every job.
+- **Company knowledge** you can open and edit.
+- **No switches** for knowledge search.
+- **Pulse** shows what it sees early.
+- **Windows** reads scans and photos.

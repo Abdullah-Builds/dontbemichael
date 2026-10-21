@@ -33,7 +33,10 @@ export type TelemetryKind =
   | 'trust-checked'
   // A note new to a member's memory index, by id and source, never its text
   // (Learning, owner 2026-10-18: an edit or a repeat is not a new note).
-  | 'note-added';
+  | 'note-added'
+  // Company foundations (office-foundations.md, eng finding 4): a question
+  // answered, changed or cleared, or work that hit it while empty, by id.
+  | 'foundation';
 
 export interface TelemetryEvent {
   agentId: string | null;

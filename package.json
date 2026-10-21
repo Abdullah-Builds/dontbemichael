@@ -1,6 +1,6 @@
 {
   "name": "dontbemichael",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "private": true,
   "description": "An AI office for small business owners: Michael, your office manager, runs a team of AI agents on your own computer.",
   "main": "out/main/index.js",
@@ -26,6 +26,7 @@
     "test": "node tools/run-tests.cjs",
     "test:focused": "node tools/run-tests.cjs",
     "check:links": "node tools/check-release-links.cjs",
+    "check:leadins": "node tools/check-release-leadins.cjs",
     "lab": "node tools/studio-lab/build.mjs",
     "shoot": "node tools/studio-lab/shoot.mjs",
     "dist": "npm run build && electron-builder",

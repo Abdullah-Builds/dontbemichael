@@ -157,6 +157,7 @@ test('the Tasks view reads open owner requests from the shared feed and badges t
   const feed = fs.readFileSync(path.resolve(__dirname, '../src/renderer/src/shell/useNeedsYou.ts'), 'utf8');
   assert.match(feed, /window\.cth\.hiveOwnerRequests\?\.\(\)/);
   assert.match(feed, /count: merged\.tasks\.reduce\(\(n, t\) => n \+ openQuestions\(t\)\.length, 0\) \+ merged\.requests\.length \+ merged\.offers\.length \+ merged\.proposals\.length \+ merged\.booksApprovals\.length,/, 'they wait on Michael, not the owner');
+  assert.match(feed, /count: merged\.tasks\.reduce\(\(n, t\) => n \+ shownQuestions\(t, merged\.foundations\)\.length, 0\) \+ merged\.requests\.length \+ merged\.offers\.length \+ merged\.proposals\.length,/, 'they wait on Michael, not the owner');
   const kanban = fs.readFileSync(path.resolve(__dirname, '../src/renderer/src/components/TasksKanban.tsx'), 'utf8');
   assert.match(kanban, /michaelCardState\(r\.createdAt, now, office\.days, office\.work\)/);
   assert.match(kanban, /pack\?\.officeHours\?\.days/);

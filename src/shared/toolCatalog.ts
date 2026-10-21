@@ -60,9 +60,9 @@ const BASE_TOOLS: ToolSpec[] = [
   {
     id: 'mempalace',
     bin: null, // presence comes from MemoryStatus.available, not a PATH probe
-    label: 'MemPalace: semantic memory',
+    label: 'MemPalace: search by meaning',
     kind: 'memory',
-    why: 'Meaning-based recall across everything your agents have learned. Without it they still keep plain markdown notes, but cannot search them by meaning.',
+    why: 'Lets your team search company knowledge by meaning, finding passages that say the same thing in other words. Without it they still search it by exact words.',
     essential: true,
     install: {
       posix: 'uv tool install mempalace',

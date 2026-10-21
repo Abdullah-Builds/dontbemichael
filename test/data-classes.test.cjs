@@ -54,10 +54,30 @@ test('patterns name the class of what they find', () => {
   assert.ok(cls('call 5125550142').includes('contact'), 'a bare phone length run counts as contact too');
 });
 
+test('a card is found beside its expiry, its security code or another number', () => {
+  // Value: protects=card details never reach Research; fails_when=digits next to a card fail it on Luhn and it passes as plain text; why_new=a card typed with its expiry tripped no pattern at all; seam=none
+  const money = (t) => dc.patternHits(t).some((h) => h.classId === 'money');
+  for (const t of [
+    'charge 4111 1111 1111 1111 12/27',
+    'card 4111-1111-1111-1111 12-27',
+    'visa 4242 4242 4242 4242 0827 cvc 314',
+    'card 4111111111111111 123',
+    'room 12 4111 1111 1111 1111',
+    'amex 3782 822463 10005 0425',
+    'card 6011 0000 0000 0000 001 12/27',
+    'mastercard 2223 0031 2200 3222 12/27',
+    'diners 3056 930902 5904 12/27',
+    'jcb 3530 1113 3330 0000 12/27'
+  ]) assert.ok(money(t), t);
+  assert.ok(!money('order 4111 1111 1111 1112 12/27'), 'fails Luhn: not a card');
+});
+
 test('plain research questions trip no pattern', () => {
   // Value: protects=ordinary asks reach Research; fails_when=years, prices or counts read as private; why_new=new feature; seam=none
   for (const t of ['pizza suppliers in Austin', 'food safety rules for 2026', 'average price of flour per 50 lb bag, around $25', 'how many restaurants opened in Texas in 2025',
-    'Is the exchange open on 2026-10-13 10:30 Eastern?', 'sales tax for 2022 2023 2024', 'ISBN 978-0-13-468599-1', 'compare 1.234.567.890 units']) {
+    'Is the exchange open on 2026-10-13 10:30 Eastern?', 'sales tax for 2022 2023 2024', 'ISBN 978-0-13-468599-1', 'compare 1.234.567.890 units',
+    'stock sizes 6 8 10 12 14 16 18 20 22 24', 'delivery zones 78701 78702 78703 78704', 'revenue by year 2017 2018 2019 2020 2021 2022',
+    'price points 1100 1200 1300 1400 1500 1600 1700']) {
     assert.deepEqual(dc.patternHits(t), [], t);
   }
 });

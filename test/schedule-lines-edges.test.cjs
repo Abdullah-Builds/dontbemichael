@@ -9,6 +9,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const loadTs = require('./load-ts.cjs');
 
 const T = loadTs('src/shared/scheduleTimes.ts');
@@ -59,6 +61,38 @@ test('two every lines on the same day clash; lineDays for an at line without day
   assert.deepEqual(T.clashingDays([{ kind: 'every', everyMs: H }, { kind: 'at', days: [3], minute: 60 }]), [3], 'a plain every line holds all 7 days');
   assert.deepEqual(T.lineDays({ kind: 'at' }), []);
   assert.deepEqual(T.lineDays({ kind: 'every' }), [0, 1, 2, 3, 4, 5, 6]);
+});
+
+test('a long every line that gains a second line or a window is shortened to a day, so it can still be saved', () => {
+  // "Add time" on a plain "every 3d" moves it to weekdays and adds a weekend line.
+  const added = [{ kind: 'every', everyMs: 3 * DAY, days: [1, 2, 3, 4, 5] }, { kind: 'at', days: [0, 6], minute: 840 }];
+  assert.equal(T.normalizeTimes(added), null, 'three days is too long once it shares the schedule');
+  const capped = T.capEveryLines(added);
+  assert.deepEqual(capped, [{ kind: 'every', everyMs: DAY, days: [1, 2, 3, 4, 5] }, added[1]]);
+  assert.ok(T.normalizeTimes(capped), 'the shortened schedule saves');
+  assert.ok(T.normalizeTimes(T.capEveryLines([{ kind: 'every', everyMs: 3 * DAY, from: 480, to: 1080 }])), 'a window too');
+  // A line already a day or shorter, and an at line, are left as they are.
+  const fine = [{ kind: 'every', everyMs: 2 * H, days: [1] }, { kind: 'at', days: [0], minute: 60 }];
+  assert.deepEqual(T.capEveryLines(fine), fine);
+  // The editor applies it on every change that leaves the plain shape.
+  const ui = fs.readFileSync(path.resolve(__dirname, '..', 'src/renderer/src/components/triggers/WhenLines.tsx'), 'utf8');
+  assert.match(ui, /const kept = isPlainEvery\(next\) \? next : capEveryLines\(next\);[\s\S]*?emit\(kept\)/);
+});
+
+test('when the cap shortens a line, the owner is told under that line, and only then', () => {
+  // Value: protects=a job never runs three times as often without the owner seeing why; fails_when=the cap is silent, or the note shows when nothing changed; why_new=owner review on #329; seam=pure helper plus source pin
+  const added = [{ kind: 'every', everyMs: 3 * DAY, days: [1, 2, 3, 4, 5] }, { kind: 'at', days: [0, 6], minute: 840 }];
+  assert.equal(T.cappedLine(added, T.capEveryLines(added)), 0, 'the line that changed');
+  const fine = [{ kind: 'every', everyMs: 2 * H, days: [1] }, { kind: 'at', days: [0], minute: 60 }];
+  assert.equal(T.cappedLine(fine, T.capEveryLines(fine)), -1, 'nothing changed, no note');
+  const ui = fs.readFileSync(path.resolve(__dirname, '..', 'src/renderer/src/components/triggers/WhenLines.tsx'), 'utf8');
+  assert.match(ui, /setCappedAt\(cappedLine\(next, kept\)\)/, 'set on each change, so the next edit clears it');
+  assert.match(ui, /cappedAt === i && <Hint>\{t\('triggersUi\.everyCapped'\)\}<\/Hint>/);
+  for (const l of ['en', 'ar', 'zh-CN']) {
+    const text = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', `src/renderer/src/i18n/locales/${l}.json`), 'utf8')).triggersUi.everyCapped;
+    assert.ok(text, l);
+    assert.doesNotMatch(text, /[\u2010-\u2015]| - /, `${l}: no dashes`);
+  }
 });
 
 // ─── simpleTimes ─────────────────────────────────────────────────────────────

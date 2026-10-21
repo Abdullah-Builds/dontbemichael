@@ -145,6 +145,10 @@ test('Team at work: busiest, several times the average, quiet, and costly for it
   assert.deepEqual(w.topTwo.ids, ['god', 'pam']);
   assert.equal(w.costliest.agentId, 'creed');
   assert.deepEqual(teamAtWork([{ agentId: 'a', busyMs: 0, usd: 3 }]).chips, {});
+  // Value: protects=eng review D1 (2026-10-19): the headline names only members who worked a little; fails_when=a member with no time is called mostly quiet again; why_new=no 0 ms row before; seam=none; no_claim=none beyond protects
+  const idle = teamAtWork([{ agentId: 'a', busyMs: 2 * h, usd: 1 }, { agentId: 'b', busyMs: 2 * h, usd: 1 }, { agentId: 'c', busyMs: 0.1 * h, usd: 0 }, { agentId: 'd', busyMs: 0, usd: 0 }]);
+  assert.deepEqual(idle.quiet, ['c'], 'the slow member is named, the idle one is not');
+  assert.equal(idle.chips.d, undefined);
   const two = teamAtWork([{ agentId: 'a', busyMs: h, usd: 100 }, { agentId: 'b', busyMs: h, usd: 1 }]);
   assert.equal(two.costliest, null, 'too few to compare');
 });

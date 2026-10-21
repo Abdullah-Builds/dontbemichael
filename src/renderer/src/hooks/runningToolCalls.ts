@@ -2,9 +2,12 @@
  * The tool calls each agent has running, by Claude's tool_use_id, so one call
  * ending doesn't blank the closing-time row while another is still running.
  *
- * A call that fails or is refused never sends PostToolUse. So the first call
- * to start after one ended starts a fresh set, and a call left behind never
- * comes back as running.
+ * Every call ends by its own id: a finished one with PostToolUse, a failed one
+ * with PostToolUseFailure, and one the app refused is never started (#261).
+ * One the engine refused on its own sends no end of its own: PostToolBatch
+ * names it with the rest of its batch. So a long call stays on the list while
+ * others start and end around it. Anything left without an end (an
+ * interrupted turn) goes with the next prompt or stop.
  */
 export interface RunningCall {
   tool: string;
@@ -15,28 +18,24 @@ export interface RunningCall {
 
 export class RunningToolCalls {
   private calls = new Map<string, Map<string, RunningCall>>();
-  /** Agents whose last tool event was a call ending. */
-  private ended = new Set<string>();
 
   start(agentId: string, id: string, call: RunningCall): void {
-    if (this.ended.delete(agentId)) this.calls.delete(agentId);
     const mine = this.calls.get(agentId) ?? new Map<string, RunningCall>();
     mine.set(id, call);
     this.calls.set(agentId, mine);
   }
 
-  /** Ends a call and returns the latest one still running, if any. */
-  end(agentId: string, id: string | undefined): RunningCall | undefined {
+  /** Ends a call, or every call a finished batch names, and returns the
+   *  latest one still running, if any. */
+  end(agentId: string, ids: string | readonly string[] | undefined): RunningCall | undefined {
     const mine = this.calls.get(agentId);
-    if (!id || !mine) return undefined;
-    mine.delete(id);
-    this.ended.add(agentId);
+    if (!ids || !mine) return undefined;
+    for (const id of typeof ids === 'string' ? [ids] : ids) mine.delete(id);
     return [...mine.values()].pop();
   }
 
   /** A new turn or a stop: nothing is running. */
   clear(agentId: string): void {
     this.calls.delete(agentId);
-    this.ended.delete(agentId);
   }
 }

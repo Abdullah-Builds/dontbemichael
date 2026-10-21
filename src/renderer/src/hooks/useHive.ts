@@ -744,17 +744,20 @@ export function useHive(config: HarnessConfig | null): void {
         if (!breakerArmed) updateAgent(e.agentId, { status: 'working', currentStation: m.station, carrying: m.carry, action: `using ${e.tool}`, actionDetail: e.detail, actionAt: Date.now() });
         if (e.toolUseId) runningCalls.start(e.agentId, e.toolUseId, { tool: e.tool, detail: e.detail, at: Date.now() });
         useStore.getState().bumpToolCount(e.agentId); // usage proxy for the command center
-      } else if (e.event === 'PostToolUse' || e.event === 'UserPromptSubmit') {
+      } else if (e.event === 'PostToolUse' || e.event === 'PostToolUseFailure' || e.event === 'PostToolBatch' || e.event === 'UserPromptSubmit') {
         // A turn is in progress (prompt submitted / tool just finished) — keep
         // it working so it doesn't flicker idle between tool calls. The
         // finished tool's detail goes, so the closing-time row never shows a
         // tool that already ended as still running (owner, 2026-09-29).
         if (!breakerArmed) updateAgent(e.agentId, { status: 'working', actionDetail: undefined, actionAt: Date.now() });
         // With parallel calls, the row goes back to the latest one still running.
-        const running = e.event === 'PostToolUse' ? runningCalls.end(e.agentId, e.toolUseId) : undefined;
+        // A call that failed ends the same way, by its own id. A finished
+        // batch ends every call it names, the ones the engine refused too.
+        const toolEnded = e.event !== 'UserPromptSubmit';
+        const running = toolEnded ? runningCalls.end(e.agentId, e.toolUseIds ?? e.toolUseId) : undefined;
         if (running && !breakerArmed) updateAgent(e.agentId, { action: `using ${running.tool}`, actionDetail: running.detail, actionAt: running.at });
         // Nothing still running: the row stops naming the tool that finished.
-        else if (e.event === 'PostToolUse' && !breakerArmed) updateAgent(e.agentId, { action: 'thinking' });
+        else if (toolEnded && !breakerArmed) updateAgent(e.agentId, { action: 'thinking' });
         // The prompt landed: a submit waiting on it stops pressing Enter.
         if (e.event === 'UserPromptSubmit') { promptSubmits.note(e.agentId); runningCalls.clear(e.agentId); }
       } else if (e.event === 'PreInvocation') {

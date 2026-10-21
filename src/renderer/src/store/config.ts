@@ -141,7 +141,6 @@ export interface HarnessConfig {
   connectorsOn?: { [key: string]: boolean };
   /** Connector keys the owner has seen in Settings. */
   connectorsSeen?: string[];
-  semanticMemory: boolean;
   embeddingModel: 'minilm' | 'embeddinggemma';
   missions?: ScheduledMission[];
   opsStandupSeeded?: boolean;

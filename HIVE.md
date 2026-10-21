@@ -192,8 +192,10 @@ is the primary control surface — tune the prompt, not the code.
   instead, and searches company knowledge by meaning with `mempalace search`.
   Detect-and-degrade: a no-op when `mempalace`
   isn't installed (markdown memory still works). Default model `minilm` (light,
-  for low-RAM Macs); `embeddinggemma` is the multilingual opt-in. Michael's **Memory** tab
-  lets the human search the same palace.
+  for low-RAM Macs); `embeddinggemma` is the multilingual opt-in. It has no switch since
+  2026-10-19 (owner): it runs whenever MemPalace is installed, and Settings, Memory &
+  Knowledge shows whether it is ready and sets its search language. Michael's **Memory** tab
+  searches the team's notes by exact words only.
   - `memory.md` is now a short index the app keeps. Agents add notes to
     `memory/inbox.md`, and a background tidy up (`memoryTidy.ts`, Haiku with no
     tools) sorts them in with itemised changes, so memory stays bounded.

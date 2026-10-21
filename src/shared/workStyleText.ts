@@ -214,15 +214,15 @@ export function thirdPerson(text: string, label: string): string {
     return `${verb}s`;
   };
   return text
-    .replace(/\b[Yy]ou are\b/g, `${label} is`)
-    .replace(/\b[Yy]ou're\b/g, `${label} is`)
-    .replace(/\b[Yy]ou have\b/g, `${label} has`)
-    .replace(/\b[Yy]ourself\b/g, label)
-    .replace(/\b[Yy]our\b/g, `${label}'s`)
+    .replace(/\b[Yy]ou are\b/g, () => `${label} is`)
+    .replace(/\b[Yy]ou're\b/g, () => `${label} is`)
+    .replace(/\b[Yy]ou have\b/g, () => `${label} has`)
+    .replace(/\b[Yy]ourself\b/g, () => label)
+    .replace(/\b[Yy]our\b/g, () => `${label}'s`)
     // "you don't" is "doesn't"; "you won't" and "you can't" stay as they are.
     .replace(/\b[Yy]ou (do|have|are)n(['’])t\b/g, (_m, verb: string, q: string) => `${label} ${negated[verb]}n${q}t`)
     .replace(/\b[Yy]ou ([a-z]+)\b(?!['’])/g, (_m, verb: string) => `${label} ${third(verb)}`)
-    .replace(/\b[Yy]ou\b/g, label);
+    .replace(/\b[Yy]ou\b/g, () => label);
 }
 
 const LABEL_HEADING: Array<[RegExp, string]> = [

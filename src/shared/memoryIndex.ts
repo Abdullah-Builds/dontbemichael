@@ -151,20 +151,32 @@ const oneLine = (v: unknown): string | undefined => {
 };
 const dateOr = (v: unknown): string | undefined => (typeof v === 'string' && DATE.test(v) ? v : undefined);
 
-/** The model's ops, checked: unknown ops, ids and kinds are dropped. */
-export function validateOps(raw: unknown, entries: MemoryEntry[]): MemoryOp[] {
+export interface ValidatedOps {
+  ops: MemoryOp[];
+  /** Model ops the checks dropped, counted by reason. Empty when all were usable. */
+  dropped: Record<string, number>;
+}
+
+/** The model's ops, checked: unknown ops, ids and kinds are dropped, each
+ *  counted by reason so a tidy run shows how much of the reply was usable. */
+export function validateOps(raw: unknown, entries: MemoryEntry[]): ValidatedOps {
   const list = raw && typeof raw === 'object' && Array.isArray((raw as { ops?: unknown }).ops) ? (raw as { ops: unknown[] }).ops : [];
   const ids = new Set(entries.map((e) => e.id));
   const kind = (v: unknown): MemoryKind | undefined => ((MEMORY_KINDS as readonly string[]).includes(v as string) ? v as MemoryKind : undefined);
   const source = (v: unknown): MemorySource => ((MEMORY_SOURCES as readonly string[]).includes(v as string) ? v as MemorySource : 'task');
   const out: MemoryOp[] = [];
+  const dropped: Record<string, number> = {};
+  const drop = (reason: string) => { dropped[reason] = (dropped[reason] ?? 0) + 1; };
   for (const o of list) {
-    if (!o || typeof o !== 'object') continue;
+    if (!o || typeof o !== 'object') { drop('malformed'); continue; }
     const r = o as Record<string, unknown>;
     if (r.op === 'add') {
       const k = kind(r.kind); const text = oneLine(r.text);
-      if (k && k !== 'procedure' && text) out.push({ op: 'add', kind: k, text, source: source(r.source), ...(dateOr(r.expires) ? { expires: dateOr(r.expires) } : {}) });
-    } else if (r.op === 'update' && typeof r.id === 'string' && ids.has(r.id)) {
+      if (!k || k === 'procedure') { drop('bad-kind'); continue; }
+      if (!text) { drop('missing-text'); continue; }
+      out.push({ op: 'add', kind: k, text, source: source(r.source), ...(dateOr(r.expires) ? { expires: dateOr(r.expires) } : {}) });
+    } else if (r.op === 'update') {
+      if (typeof r.id !== 'string' || !ids.has(r.id)) { drop('unknown-id'); continue; }
       out.push({
         op: 'update', id: r.id,
         ...(oneLine(r.text) ? { text: oneLine(r.text) } : {}),
@@ -172,15 +184,19 @@ export function validateOps(raw: unknown, entries: MemoryEntry[]): MemoryOp[] {
         ...(dateOr(r.expires) ? { expires: dateOr(r.expires) } : {}),
         ...(r.repeat === true ? { repeat: true } : {})
       });
-    } else if (r.op === 'delete' && typeof r.id === 'string' && ids.has(r.id)) {
+    } else if (r.op === 'delete') {
+      if (typeof r.id !== 'string' || !ids.has(r.id)) { drop('unknown-id'); continue; }
       out.push({ op: 'delete', id: r.id, reason: oneLine(r.reason) ?? 'replaced' });
     } else if (r.op === 'procedure') {
       const name = oneLine(r.name);
       const steps = typeof r.steps === 'string' ? r.steps.trim().slice(0, MAX_PROCEDURE_CHARS) : '';
-      if (name && steps) out.push({ op: 'procedure', name, steps, source: source(r.source) });
+      if (!name || !steps) { drop('missing-text'); continue; }
+      out.push({ op: 'procedure', name, steps, source: source(r.source) });
+    } else {
+      drop('unknown-op');
     }
   }
-  return out;
+  return { ops: out, dropped };
 }
 
 export interface TidyOutcome {
@@ -192,21 +208,28 @@ export interface TidyOutcome {
   /** Entries that are new to the index, not edits of one already there, for
    *  Pulse's Learning count (owner, 2026-10-18: an edit is not a new note). */
   added: Array<{ id: string; source: MemorySource }>;
-  stats: { added: number; updated: number; deleted: number; procedures: number; repeats: number };
+  stats: { added: number; updated: number; deleted: number; procedures: number; repeats: number; dupes: number };
 }
 
-/** Apply checked ops to the entries. Deterministic; the model never writes the file. */
+/** Apply checked ops to the entries. Deterministic; the model never writes the file.
+ *  An add whose text matches an entry already in the index at that point in the
+ *  batch (including earlier adds), ignoring case and extra whitespace, is
+ *  skipped and counted as a dupe. Checked against the index as it stands, so a
+ *  delete or an update that moves text away leaves room for that text again. */
 export function applyOps(entries: MemoryEntry[], ops: MemoryOp[], today: string): TidyOutcome {
   let next = entries.map((e) => ({ ...e }));
   const archived: TidyOutcome['archived'] = [];
   const procedures: TidyOutcome['procedures'] = [];
   const added: TidyOutcome['added'] = [];
-  const stats = { added: 0, updated: 0, deleted: 0, procedures: 0, repeats: 0 };
+  const stats = { added: 0, updated: 0, deleted: 0, procedures: 0, repeats: 0, dupes: 0 };
+  const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
   let n = next.reduce((max, e) => Math.max(max, Number(e.id.slice(1)) || 0), 0);
   const newId = () => `m${++n}`;
 
   for (const op of ops) {
     if (op.op === 'add') {
+      const key = norm(op.text);
+      if (next.some((x) => norm(x.text) === key)) { stats.dupes++; continue; }
       const id = newId();
       next.push({ id, kind: op.kind, text: op.text, source: op.source, date: today, ...(op.expires ? { expires: op.expires } : {}) });
       added.push({ id, source: op.source });

@@ -13,6 +13,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const net = require('node:net');
 const { spawn } = require('node:child_process');
 const loadTs = require('./load-ts.cjs');
 
@@ -24,7 +25,7 @@ require.cache[electron] = {
 
 const { HiveManager } = loadTs('src/main/hive.ts');
 const { HookServer } = loadTs('src/main/hooks.ts');
-const { HOOK_PATH_UNCHECKED } = loadTs('src/shared/hookEvents.ts');
+const { HOOK_PATH_UNCHECKED, MAX_HOOK_FRAME_BYTES } = loadTs('src/shared/hookEvents.ts');
 const F = loadTs('src/shared/folderAccess.ts');
 const R = loadTs('src/shared/research.ts');
 
@@ -68,6 +69,53 @@ test('a big save keeps its path, padded or not, and the app still refuses anothe
   // A path that can't fit even alone is refused by the hook program itself.
   const huge = await shim({ tool_name: 'Read', tool_input: { file_path: 'a/'.repeat(150_000) + 'x.md' } });
   assert.equal(huge.permissionDecisionReason, HOOK_PATH_UNCHECKED);
+});
+
+test('a finished batch too big for one frame goes out with only its call ids, and the panel gets every one', unix, async (t) => {
+  // Value: protects=the panel hears every batch end, refused calls included; fails_when=the hook program sends the batch's inputs and outputs, so a few big reads pass the frame limit and the app drops it; why_new=maintainer review of #401; seam=a plain socket in place of the app's
+  const home = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'md-batch-')));
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  const hive = new HiveManager(() => home);
+  await hive.ensureAgent({ id: 'pam', name: 'Pam', cwd: home });
+  const sock = path.join(home, 'b.sock');
+  const frames = [];
+  const server = net.createServer((conn) => {
+    let buf = '';
+    conn.on('error', () => {});
+    conn.on('data', (d) => {
+      buf += d;
+      if (buf.includes('\n')) { frames.push(buf.slice(0, buf.indexOf('\n'))); conn.end('{}'); }
+    });
+  });
+  await new Promise((r) => server.listen(sock, r));
+  t.after(() => server.close());
+  const send = (payload) => new Promise((resolve) => {
+    const p = spawn(process.execPath, [hive.shimPath()], { env: { PATH: process.env.PATH, AGENT_ID: 'pam', HIVE_SOCK: sock } });
+    p.on('close', () => resolve(frames.pop()));
+    p.stdin.end(JSON.stringify({ session_id: 's', cwd: home, ...payload }));
+  });
+  const big = 'x'.repeat(100_000);
+  const ids = ['toolu_bash', 'toolu_r1', 'toolu_r2', 'toolu_r3'];
+  const calls = ids.map((id, i) => ({ tool_name: i ? 'Read' : 'Bash', tool_input: { file_path: `/a/${i}.md` }, tool_use_id: id, tool_response: i ? big : 'This command requires approval' }));
+  assert.ok(Buffer.byteLength(JSON.stringify({ hook_event_name: 'PostToolBatch', tool_calls: calls })) > MAX_HOOK_FRAME_BYTES, 'too big as the engine sends it');
+  const batch = await send({ hook_event_name: 'PostToolBatch', tool_calls: calls });
+  assert.ok(Buffer.byteLength(batch) <= MAX_HOOK_FRAME_BYTES, 'under the limit');
+  assert.deepEqual(JSON.parse(batch).tool_calls, ids.map((id) => ({ tool_use_id: id })), 'every id and nothing else');
+  // The app forwards the ids to the panel.
+  const sent = [];
+  const app = new HookServer(hive, () => ({ send: (c, p) => sent.push({ c, p }) }), () => ({ harnessHome: home }));
+  app.handle(JSON.parse(batch));
+  assert.deepEqual(sent.filter((x) => x.c === 'hive:hookEvent').pop()?.p.toolUseIds, ids);
+  // A finished or failed call goes without its output; its input stays for the breaker and the Read hook.
+  const post = JSON.parse(await send({ hook_event_name: 'PostToolUse', tool_name: 'Read', tool_input: { file_path: '/a/1.md' }, tool_use_id: 'toolu_r1', tool_response: big.repeat(3) }));
+  assert.equal(post.tool_response, undefined);
+  assert.equal(post.tool_use_id, 'toolu_r1');
+  assert.deepEqual(post.tool_input, { file_path: '/a/1.md' });
+  const failed = JSON.parse(await send({ hook_event_name: 'PostToolUseFailure', tool_name: 'Bash', tool_input: { command: 'npm test' }, tool_use_id: 'toolu_bash', error: big.repeat(3) }));
+  assert.equal(failed.error, undefined);
+  assert.equal(failed.tool_use_id, 'toolu_bash');
+  // A missing list goes out as no ids.
+  assert.deepEqual(JSON.parse(await send({ hook_event_name: 'PostToolBatch' })).tool_calls, []);
 });
 
 test('the app refuses a trimmed file call that arrives without its path', async (t) => {

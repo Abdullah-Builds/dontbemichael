@@ -154,8 +154,8 @@ export function teamMemberRole(def: Pick<AgentDefinitionV2, 'role' | 'summary' |
 export function fillBusiness(text: string, business: { name?: string; city?: string }): string {
   const name = business.name?.trim() || 'the business';
   const city = business.city?.trim();
-  return (city ? text.replace(/\{City\}/g, city) : text.replace(/,? ?\{City\}/g, ''))
-    .replace(/\{Business\}/g, name);
+  return (city ? text.replace(/\{City\}/g, () => city) : text.replace(/,? ?\{City\}/g, ''))
+    .replace(/\{Business\}/g, () => name);
 }
 
 /**

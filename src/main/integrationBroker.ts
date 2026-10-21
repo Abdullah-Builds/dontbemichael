@@ -33,6 +33,18 @@ import {
   resolveUpstreamUrl,
   authTypeNeedsSecret
 } from '../shared/integrations';
+import {
+  BrokerWriteOnce,
+  JOURNAL_UNSAVED,
+  WRITE_BODY_KEEP,
+  WRITE_NOT_SENT,
+  WRITE_TOO_LARGE,
+  WRITE_UNCERTAIN,
+  classifyUpstreamFailure,
+  isWriteMethod,
+  withQuickBooksRequestId,
+  writeOnceIdentity
+} from './brokerWriteOnce';
 
 const MAX_BODY_BYTES = 10 * 1024 * 1024; // 10 MB request-body cap
 const UPSTREAM_TIMEOUT_MS = 30_000;
@@ -74,6 +86,14 @@ export interface IntegrationBrokerDeps {
   getSecret: (secretRef: string | undefined) => string | undefined;
   /** md-mail tool calls, `POST /mail/<tool>` (docs/designs/multi-mailbox.md). */
   mail?: MailRouteHandler;
+  /** App-private send once journal. The desktop app always sets this. Tests
+   *  that are not about writes omit it, and those writes keep the old path. */
+  journalPath?: string;
+  now?: () => number;
+  fetchImpl?: typeof fetch;
+  upstreamTimeoutMs?: number;
+  /** Test seam. Production keeps WRITE_BODY_KEEP. */
+  replayBodyMax?: number;
 }
 
 /** True for IPv4 loopback (127.0.0.0/8) and IPv6 ::1 (incl. v4-mapped). Mirrors slack.ts. */
@@ -81,6 +101,11 @@ function isLoopback(addr: string): boolean {
   const a = addr.replace(/^::ffff:/, '');
   return a === '::1' || a.startsWith('127.');
 }
+
+type WriteOutcome =
+  | { type: 'error'; status: number; code: string; message: string }
+  | { type: 'truncated'; status: number }
+  | { type: 'http'; status: number; contentType: string; body: Buffer };
 
 export class IntegrationBroker {
   private server: Server | null = null;
@@ -92,9 +117,20 @@ export class IntegrationBroker {
   private readonly byToken = new Map<string, Capability>();
   /** workerId -> token, for revoke. */
   private readonly byWorker = new Map<string, string>();
+  /** Send once for connected app writes. Null when no journal path was given. */
+  private readonly journal: BrokerWriteOnce | null;
+  private readonly fetchImpl: typeof fetch;
+  private readonly upstreamTimeoutMs: number;
+  private readonly replayBodyMax: number;
+  /** Identical writes already in flight, so a second caller waits for the first. */
+  private readonly writes = new Map<string, Promise<WriteOutcome>>();
 
   constructor(deps: IntegrationBrokerDeps) {
     this.deps = deps;
+    this.journal = deps.journalPath ? new BrokerWriteOnce(deps.journalPath, deps.now ?? Date.now) : null;
+    this.fetchImpl = deps.fetchImpl ?? fetch;
+    this.upstreamTimeoutMs = deps.upstreamTimeoutMs ?? UPSTREAM_TIMEOUT_MS;
+    this.replayBodyMax = deps.replayBodyMax ?? WRITE_BODY_KEEP;
   }
 
   /** Bind a loopback port (0 ⇒ OS-assigned). Resolves the bound port. */
@@ -251,7 +287,7 @@ export class IntegrationBroker {
       if (!secret) return IntegrationBroker.sendError(res, 503, 'no_secret', 'no secret configured for this integration');
     }
 
-    void this.forward(req, res, rec, upstream, secret);
+    void this.forward(req, res, rec, upstream, secret, cap.agentId ?? cap.workerId, integrationId, path + query);
   }
 
   private async mail(req: IncomingMessage, res: ServerResponse, agentId: string, op: string): Promise<void> {
@@ -279,7 +315,10 @@ export class IntegrationBroker {
     res: ServerResponse,
     rec: IntegrationRecord,
     upstream: URL,
-    secret: string | undefined
+    secret: string | undefined,
+    agentId: string,
+    integrationId: string,
+    pathAndQuery: string
   ): Promise<void> {
     // Buffer the request body with a hard cap (write methods).
     const method = (req.method ?? 'GET').toUpperCase();
@@ -312,11 +351,16 @@ export class IntegrationBroker {
       outHeaders[k] = v;
     }
 
+    if (this.journal && isWriteMethod(method)) {
+      await this.forwardWrite(res, upstream, outHeaders, method, body ?? Buffer.alloc(0), agentId, integrationId, pathAndQuery);
+      return;
+    }
+
     const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), UPSTREAM_TIMEOUT_MS);
+    const timer = setTimeout(() => ac.abort(), this.upstreamTimeoutMs);
     let upstreamRes: Response;
     try {
-      upstreamRes = await fetch(upstream, {
+      upstreamRes = await this.fetchImpl(upstream, {
         method,
         headers: outHeaders,
         body: body as BodyInit | undefined,
@@ -350,6 +394,196 @@ export class IntegrationBroker {
       clearTimeout(timer);
     }
   }
+
+  /** One identical write is sent once. The first caller is answered from the
+   *  upstream stream. A later caller, including one after a restart, is
+   *  answered from the journal. */
+  private async forwardWrite(
+    res: ServerResponse,
+    upstream: URL,
+    headers: Record<string, string>,
+    method: string,
+    body: Buffer,
+    agentId: string,
+    integrationId: string,
+    pathAndQuery: string
+  ): Promise<void> {
+    const journal = this.journal;
+    if (!journal) return;
+    const identity = writeOnceIdentity({ agentId, integrationId, method, pathAndQuery, body });
+    const running = this.writes.get(identity.storageKey);
+    if (running) {
+      this.deliver(res, await running);
+      return;
+    }
+    const looked = journal.lookup(identity.storageKey);
+    if (looked.kind === 'uncertain') {
+      this.deliver(res, { type: 'error', status: 409, code: 'may_have_applied', message: WRITE_UNCERTAIN });
+      return;
+    }
+    if (looked.kind === 'replay') {
+      this.deliver(res, { type: 'http', status: looked.status, contentType: looked.contentType, body: looked.body });
+      return;
+    }
+    if (looked.kind === 'truncated') {
+      this.deliver(res, { type: 'truncated', status: looked.status });
+      return;
+    }
+    if (!journal.begin(identity.storageKey, identity.idempotencyKey)) {
+      this.deliver(res, { type: 'error', status: 503, code: 'write_record', message: JOURNAL_UNSAVED });
+      return;
+    }
+
+    // Our key wins. A worker supplied one would change on every retry, and the
+    // provider would treat those as different writes.
+    delete headers['idempotency-key'];
+    headers['idempotency-key'] = identity.idempotencyKey;
+    const target = withQuickBooksRequestId(upstream, identity.idempotencyKey);
+    const attempt = this.executeWrite(res, target, headers, method, body, identity.storageKey, integrationId);
+    this.writes.set(identity.storageKey, attempt);
+    try {
+      await attempt;
+    } finally {
+      this.writes.delete(identity.storageKey);
+    }
+  }
+
+  private async executeWrite(
+    res: ServerResponse,
+    upstream: URL,
+    headers: Record<string, string>,
+    method: string,
+    body: Buffer,
+    storageKey: string,
+    integrationId: string
+  ): Promise<WriteOutcome> {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), this.upstreamTimeoutMs);
+    try {
+      let upstreamRes: Response;
+      try {
+        upstreamRes = await this.fetchImpl(upstream, {
+          method,
+          headers,
+          body: body as BodyInit,
+          redirect: 'manual',
+          signal: ac.signal
+        });
+      } catch (e) {
+        return this.failWrite(res, storageKey, e);
+      }
+      // A rate limit on a write pushes the app's next call back, as for a read.
+      this.throttle.note(integrationId, upstreamRes.status, upstreamRes.headers);
+      return await this.relayWrite(res, upstreamRes, storageKey);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /** The first caller gets the real stream, including an answer too large to
+   *  keep. The journal keeps a small answer so a retry can be given it whole. */
+  private async relayWrite(res: ServerResponse, upstreamRes: Response, storageKey: string): Promise<WriteOutcome> {
+    const status = upstreamRes.status;
+    const contentType = upstreamRes.headers.get('content-type') ?? 'application/octet-stream';
+    const respHeaders: Record<string, string> = {};
+    upstreamRes.headers.forEach((value, key) => {
+      if (!STRIP_RESPONSE.has(key.toLowerCase())) respHeaders[key] = value;
+    });
+    const chunks: Buffer[] = [];
+    let size = 0;
+    let truncated = false;
+    try {
+      if (!res.headersSent) res.writeHead(status, respHeaders);
+      if (upstreamRes.body) {
+        const node = Readable.fromWeb(upstreamRes.body as Parameters<typeof Readable.fromWeb>[0]);
+        for await (const chunk of node) {
+          const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+          if (!truncated) {
+            size += buf.length;
+            if (size > this.replayBodyMax) {
+              truncated = true;
+              chunks.length = 0;
+            } else {
+              chunks.push(buf);
+            }
+          }
+          if (!res.writableEnded) {
+            try {
+              if (!res.write(buf)) await waitForDrain(res);
+            } catch {
+              truncated = true;
+              chunks.length = 0;
+              node.destroy();
+              break;
+            }
+          }
+        }
+      }
+      if (!res.writableEnded) res.end();
+    } catch {
+      truncated = true;
+      chunks.length = 0;
+      // The status is already sent and the body has no length, so a clean end
+      // would read to the agent as a whole answer. Drop the connection instead.
+      res.destroy();
+    }
+    const kept = truncated ? undefined : Buffer.concat(chunks);
+    // Only a write that worked is kept. A refusal, a rate limit or a server
+    // error may go again; the same key goes up, so the service can still dedupe.
+    if (status >= 200 && status < 300) this.journal?.settle(storageKey, status, contentType, kept, truncated);
+    else this.journal?.forget(storageKey);
+    if (truncated) return { type: 'truncated', status };
+    return { type: 'http', status, contentType, body: kept ?? Buffer.alloc(0) };
+  }
+
+  private failWrite(res: ServerResponse, storageKey: string, e: unknown): WriteOutcome {
+    const kind = classifyUpstreamFailure(e);
+    console.error('[broker] write failed:', kind, e instanceof Error ? e.message : String(e));
+    let outcome: WriteOutcome;
+    if (kind === 'never' && this.journal?.forget(storageKey)) {
+      outcome = { type: 'error', status: 502, code: 'bad_gateway', message: WRITE_NOT_SENT };
+    } else {
+      outcome = { type: 'error', status: 409, code: 'may_have_applied', message: WRITE_UNCERTAIN };
+    }
+    this.deliver(res, outcome);
+    return outcome;
+  }
+
+  private deliver(res: ServerResponse, outcome: WriteOutcome): void {
+    if (res.headersSent || res.writableEnded) return;
+    if (outcome.type === 'error') {
+      IntegrationBroker.sendError(res, outcome.status, outcome.code, outcome.message);
+      return;
+    }
+    if (outcome.type === 'truncated') {
+      // The real answer was too large to keep. A success status with a stand-in
+      // body would look like the created invoice, so this is a refusal instead.
+      res.writeHead(409, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ code: 'already_applied', error: WRITE_TOO_LARGE }));
+      return;
+    }
+    res.writeHead(outcome.status, { 'content-type': outcome.contentType });
+    res.end(outcome.body);
+  }
+}
+
+/** Wait until the caller can take more bytes, or until they go away. */
+function waitForDrain(res: ServerResponse): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const finish = (err?: Error): void => {
+      res.off('drain', onDrain);
+      res.off('close', onClose);
+      res.off('error', onError);
+      if (err) reject(err);
+      else resolve();
+    };
+    const onDrain = (): void => finish();
+    const onClose = (): void => finish();
+    const onError = (err: Error): void => finish(err);
+    res.once('drain', onDrain);
+    res.once('close', onClose);
+    res.once('error', onError);
+  });
 }
 
 /** Read a request body into a Buffer, aborting past MAX_BODY_BYTES (throws 'too_large'). */

@@ -196,7 +196,9 @@
     "traces": "追踪",
     "memory": "记忆",
     "profile": "简介",
-    "capabilities": "权限"
+    "capabilities": "权限",
+    "resizeLabel": "调整侧边栏大小",
+    "resizeTitle": "拖动以调整大小，双击以重置。"
   },
   "toolWaterfall": {
     "fresh": "新计 {{tokens}}t",
@@ -334,12 +336,9 @@
       "steerFirst": "先引导"
     },
     "memory": {
-      "semanticMemory": "语义记忆",
-      "crossSession": "跨会话回忆",
-      "crossSessionDesc": "团队会把学到的东西一天天记住，并能按意思而不只是按原词找回。可在 {{godName}} 面板的记忆标签页中搜索。",
-      "kg": "知识图谱",
-      "kgTitle": "企业知识库",
-      "kgDesc": "添加你的文档、图片和 PDF；智能体可通过 kg 工具按需查询。",
+      "kg": "公司知识",
+      "kgTitle": "团队会搜索的文档",
+      "kgDesc": "政策、价格和业务运作方式：Word、Excel、PowerPoint、PDF、文本或图片。",
       "adding": "添加中…",
       "addFiles": "添加文件…",
       "docCount": "已索引 {{count}} 个文档",
@@ -349,7 +348,25 @@
       "errUnknown": "读取时出了问题",
       "errNotFound": "文件已经不在了",
       "errNoPermission": "这台电脑不允许读取它",
-      "errIsFolder": "这是文件夹，不是文件"
+      "errIsFolder": "这是文件夹，不是文件",
+      "docs": {
+        "label": "文档",
+        "tip": "团队会搜索这些内容。在你自己的应用中打开，保存后，代理会搜索新版本。",
+        "open": "打开",
+        "openAria": "打开 {{title}}",
+        "readOnly": "只读",
+        "readOnlyTip": "这个文档由应用根据你和团队的回答自动更新，所以会打开一份只读副本。",
+        "added": "添加于 {{date}}",
+        "updated": "更新于 {{date}}",
+        "savedIn": "已读入你对 {{title}} 的修改。",
+        "saveFailed": "无法读入你对 {{title}} 的修改：{{reason}}",
+        "openFailed": "无法打开 {{title}}。"
+      },
+      "meaning": {
+        "title": "按含义搜索",
+        "tip": "团队还能找到用不同说法表达相同内容的段落，而不只是完全相同的词。它只搜索公司知识；每个成员自己的记忆保持私密。 在“先决条件”中设置 MemPalace 后即可使用。",
+        "languageTip": "更改后会重新索引你的文档。完成后按含义搜索即可恢复，通常只需几分钟。"
+      }
     },
     "connections": {
       "slack": "Slack",
@@ -504,11 +521,9 @@
     "noIssues": "尚未获取 issues。",
     "assign": "分配",
     "textSearch": "文本搜索（看板、任务、记忆）",
-    "textSearchPlaceholder": "在 hive 文件中查找精确文本…",
+    "textSearchPlaceholder": "在团队笔记、看板和任务中查找词语",
     "nothingMatched": "没有匹配项。",
-    "searchNoMatch": "还没有匹配项。",
     "semanticSearch": "语义搜索（记忆宫殿）",
-    "semanticPlaceholder": "hive 知道些什么关于…",
     "memoryFile": "记忆文件",
     "noMemory": "尚未记录记忆。",
     "activity": "动态",
@@ -1238,6 +1253,8 @@
     "labelHint": "任务名称。做法来自工作方式；重点说明每次运行关注什么。",
     "officeEmpty": "团队里还没有人开启定时工作。",
     "emptyAgent": "{{name}} 还没有定时工作。",
+    "suggestedJob": "建议：{{title}}，{{schedule}}",
+    "addSuggestedJob": "添加已暂停的 {{title}}",
     "addFor": "为 {{name}} 添加定时任务",
     "agentSummary": "{{name}} 有 {{count}} 项定时工作。",
     "agentSummaryPlural": "{{name}} 有 {{count}} 项定时工作。",
@@ -1275,6 +1292,7 @@
     "focusConflict": "这可能有冲突：{{conflict}} 请修改，或仍然保存。",
     "focusFromOlder": "以此任务的旧说明为起点。",
     "addFocus": "添加重点",
+    "cannotCheckEmail": "{{name}} 无法查看邮件",
     "checking": "正在检查…",
     "saveAnyway": "仍然保存"
   },
@@ -1322,6 +1340,7 @@
     "pickDayHint": "至少选择一天，否则它将永远不会运行。",
     "addTime": "再加一个时间",
     "removeTime": "删除",
+    "everyCapped": "现已改为每 1 天：有多个时间时，每行最多每天重复一次。",
     "onlyBetween": "只在",
     "and": "至",
     "windowHint": "结束时间早于开始时间。",
@@ -1438,11 +1457,11 @@
   },
   "memoryPanel": {
     "notSetUp": "未设置",
-    "onReady": "开 · 就绪",
-    "onGettingReady": "开 · 准备中…",
+    "onReady": "就绪",
+    "onGettingReady": "准备中…",
     "notInstalled": "语义搜索尚未安装。",
     "setUpInPrereqs": "在前置条件中设置 →",
-    "plainNotesStill": "没有它，智能体仍然会记普通笔记。",
+    "plainNotesStill": "没有它，团队仍可按完全相同的词搜索公司知识。",
     "searchLanguage": "搜索语言",
     "modelFast": "快速",
     "modelFastDetail": "仅英文 · 约 90 MB",
@@ -1667,7 +1686,11 @@
     "askWithdrawnBecause": "未经回答即撤回：{{reason}}",
     "askWithdrawnCardClosed": "卡片关闭时已撤回。",
     "askWithdrawnMemberDeleted": "提出它的团队成员被删除时已撤回。",
-    "empty": "暂无",
+    "emptyTodo": "还没有待办。告诉 {{godName}} 下一步做什么。",
+    "emptyDoing": "现在没有人在做事。",
+    "emptyWaiting": "没有人在等别人。",
+    "emptyBlocked": "没有受阻的任务。好好享受吧。",
+    "emptyDone": "还没有完成的任务。给团队一点时间。",
     "showFewer": "收起",
     "more": "还有 {{count}} 个",
     "status": "状态",
@@ -1687,7 +1710,9 @@
     "ageDays": "{{count}} 天",
     "closedByOwner": "由负责人关闭",
     "nothingAsked": "没有提问",
-    "nothingAskedTitle": "已阻塞，但没有等待你回答的问题。{{godName}} 会被提醒向你提问或移动它。"
+    "nothingAskedTitle": "已阻塞，但没有等待你回答的问题。{{godName}} 会被提醒向你提问或移动它。",
+    "showingFiltered": "显示 {{total}} 项任务中的 {{count}} 项",
+    "noMatchingTasks": "没有匹配搜索或筛选条件的任务"
   },
   "queueComposer": {
     "recording": "● 录音中，点击停止转写",
@@ -1955,9 +1980,7 @@
     "stepsMissing": "这项的步骤还没有保存。",
     "showFile": "显示文件",
     "showNotes": "显示为笔记",
-    "searchTitle": "搜索办公室",
-    "exactWords": "精确词语",
-    "byMeaning": "按含义"
+    "searchTitle": "搜索办公室"
   },
   "profile": {
     "officeManager": "办公室经理",
@@ -2138,6 +2161,7 @@
     "michaelBoard": "正在更新看板",
     "minutes": "{{count}} 分钟",
     "agentWords": "“{{text}}”",
+    "lastSaid": "最后说：“{{text}}”",
     "sendFailed": "没有发送成功。请重试。",
     "michaelEnded": "终端已结束：请点“取消，回去工作”，或点“立即强制退出”",
     "confirmedCount": "{{acked}} / {{total}} 名成员已确认",
@@ -2343,6 +2367,13 @@
     "empty": "关于办公室的事，尽管问。",
     "example1": "今天有什么安排？",
     "example2": "上周情况怎么样？",
+    "newReplies_zero": "没有新回复",
+    "newReplies_one": "1 条新回复",
+    "newReplies_two": "2 条新回复",
+    "newReplies_few": "{{count}} 条新回复",
+    "newReplies_many": "{{count}} 条新回复",
+    "newReplies_other": "{{count}} 条新回复",
+    "jumpToLatest": "跳至最新",
     "earlier": "更早",
     "today": "今天",
     "yesterday": "昨天",
@@ -2470,6 +2501,8 @@
     "waitingMany": "有 {{count}} 个请求在等待。它们会退回给发送者。",
     "windows": "在 Windows 上，{{name}} 仍可访问你的办公室文件。",
     "windowsTip": "Windows 目前还无法限制 {{name}} 的命令，因此隐私检查在那里不能完全生效。",
+    "windowsTeam": "在 Windows 上，团队的命令仍可访问互联网。",
+    "windowsTeamTip": "Windows 目前还无法阻止团队的命令访问互联网：那里只会拒绝他们的网页工具。在 Mac 上，只有 {{name}} 使用互联网。",
     "sendTitle": "你的团队可以发给 {{name}} 的内容",
     "sendTip": "发给 {{name}} 的每条消息都会被检查。任何隐私内容都会退回给发送者，不会外泄。",
     "count": "{{allowed}} 项允许，{{private}} 项隐私",
@@ -2572,6 +2605,24 @@
     "notNow": "暂不",
     "savesAbout": "每周约节省 {{usd}}",
     "adviceStarts": "建议将于 {{day}} 开始，届时 Pulse 已观察你的团队工作满两周。它从 {{since}} 开始，仅凭几天异常忙碌或清闲的情况可能会给出错误的建议。",
+    "adviceFrom": "{{day}} 起提供建议",
+    "early": {
+      "title": "脉搏目前看到的情况，还不是建议。",
+      "runLess": "{{name}} 的“{{job}}”目前 {{runs}} 次运行中有 {{nothing}} 次没有可做的事。",
+      "runMore": "{{name}} 的“{{job}}”目前 {{runs}} 次运行中有 {{didWork}} 次找到了工作。",
+      "kept": "{{name}} 的工作目前 {{decisions}} 件中有 {{kept}} 件原样保留。",
+      "keptFew": "{{name}} 的工作目前 {{decisions}} 件中只有 {{kept}} 件原样保留。",
+      "reopened": "你目前重新打开了 {{name}} 的 {{reopens}} 张卡片。",
+      "pill": "初步观察",
+      "dayOf": "第 {{n}} 天，共 {{days}} 天",
+      "ofRuns": "共 {{n}} 次运行",
+      "of": "共 {{n}} 件",
+      "capNothing": "目前没有可做的事",
+      "capWork": "目前找到了工作",
+      "capKept": "目前原样保留",
+      "capReopened": "目前你重新打开的卡片",
+      "more": "随着团队工作，这里会出现更多规律。"
+    },
     "nothingToChange": "本周没有需要更改的。",
     "savedByChanges": "你的更改节省了",
     "savedTip": "根据记录测量：你更改前每项工作的成本，对比之后的成本。按 API 价格计算。",
@@ -2582,7 +2633,8 @@
     "whatGotDone": "完成了什么",
     "outcome": {
       "email": "封邮件已整理",
-      "sent": "封邮件代你发出，{{sub}} 封原样",
+      "sent": "封邮件代你发出，{{sub}} 封未经修改即获批准",
+      "sentNone": "封邮件代你发出",
       "task": "项任务已完成",
       "check": "次定时检查，{{sub}} 次有事可做"
     },
@@ -2647,7 +2699,6 @@
     "awayMine": "的工作",
     "fourWeeks": "价值，最近 4 周",
     "safe": {
-      "title": "安全保障",
       "toInternet": "个发往互联网的问题",
       "sentAsWritten": "按原文",
       "privateOut": "已去除隐私部分",
@@ -2676,7 +2727,6 @@
       "rulesTip": "每位成员只能使用你在设置中授予的内容；其他一律阻止。"
     },
     "learning": {
-      "title": "学习",
       "tip": "笔记在加入成员记忆的当天计入，修改不计入。向你提出的问题按团队处理的请求数计算。",
       "fromYou": "来自你的回答",
       "onJob": "工作中学到",
@@ -2701,10 +2751,18 @@
     "work": {
       "title": "团队工作情况",
       "tip": "工作时间从成员接到每个请求起，到其最后一次回复为止，每个请求最多计一小时。成本为每位成员按工作份额分摊的套餐费用。",
-      "none": "尚未记录工作时间。",
+      "nobody": {
+        "today": "今天还没有人工作。",
+        "this-week": "本周还没有人工作。",
+        "this-month": "本月还没有人工作。"
+      },
       "headTop": "{{a}} 和 {{b}} 完成了团队 {{pct}} 的工作时间。",
       "headQuiet": "{{names}} 大多比较清闲。",
       "headQuietOne": "{{names}} 大多比较清闲。",
+      "quietMore": "另有 {{n}} 人没有动静",
+      "quietMoreOne": "另有 1 人没有动静",
+      "quietAll": "{{n}} 人没有动静",
+      "quietAllOne": "1 人没有动静",
       "headCostly": "{{name}} 以最少的工作花费最多：{{time}} 花费 {{usd}}。",
       "member": "成员",
       "time": "工作时间",
@@ -2720,7 +2778,8 @@
       "open": "点击成员查看其本周",
       "rowAria": "{{name}}：工作 {{time}}，{{value}}",
       "cost": "成本",
-      "planLegend": "成本：每位成员分摊的套餐费用"
+      "planLegend": "成本：每位成员分摊的套餐费用",
+      "rowAriaFoundations": "{{row}}，{{foundations}}"
     },
     "plan": {
       "yourPlan": "Claude 套餐",
@@ -2856,6 +2915,139 @@
       },
       "earlier": "还有 {{count}} 条没有详情。",
       "notesEmpty": "里面还没有笔记，只有 {{research}} 的空白笔记页。"
+    },
+    "quiet": {
+      "row": "暂无动静",
+      "chipAria": "{{name}}：{{period}} 0。显示卡片。",
+      "opened": "{{name}}，{{period}} 0",
+      "period": {
+        "today": "今天",
+        "this-week": "本周",
+        "this-month": "本月"
+      },
+      "name": {
+        "email": "整理的邮件",
+        "sent": "发出的邮件",
+        "task": "完成的任务",
+        "check": "定时检查",
+        "toInternet": "发往互联网的问题",
+        "webAnswers": "清理的网络答案",
+        "held": "暂扣的消息",
+        "rules": "被阻止的步骤",
+        "learned": "新笔记",
+        "questions": "向你提出的问题",
+        "spent": "支出",
+        "yourTime": "你的时间"
+      }
+    },
+    "foundations": {
+      "label": "基础信息",
+      "tip": "每个岗位需要了解的业务信息，来自公司基础信息。这里只显示工作中需要了空白答案的岗位。打开一个即可在“需要你”中回答它的问题。",
+      "jobAria": "{{job}}，已回答 {{answered}}/{{total}}。打开它的问题",
+      "count": "基础信息 {{answered}}/{{total}}",
+      "of": "{{answered}}/{{total}}",
+      "more_one": "还有 {{count}} 个尚无工作用到",
+      "more": "还有 {{count}} 个尚无工作用到",
+      "notNeeded_one": "{{count}} 个空白，尚无工作用到",
+      "notNeeded": "{{count}} 个空白，尚无工作用到",
+      "without": "没有{{what}}时",
+      "with": "有了之后",
+      "proofLine": "原样采用的工作，回答之前与之后。",
+      "openQuestion": "打开“{{what}}”问题"
     }
+  },
+  "foundations": {
+    "q": {
+      "offer": "我们卖什么",
+      "customers": "我们卖给谁（理想客户）",
+      "sales_process": "一笔销售如何进行，逐步说明",
+      "market": "企业客户、个人客户还是两者",
+      "deals": "潜在客户和交易记录在哪里",
+      "prices": "价格和条款",
+      "voice": "我们的说话方式（品牌语气）",
+      "brand": "我们的形象（标志、颜色、字体）",
+      "current_customers": "我们现在的客户是谁",
+      "competitors": "我们的竞争对手，以及我们的不同",
+      "accounting": "记账方法（收付实现制或权责发生制）",
+      "fiscal_year": "财务年度",
+      "money": "收支记录在哪里",
+      "owed": "谁欠我们钱、我们欠谁钱，记录在哪里",
+      "results": "报表、预算或目标",
+      "policies": "退款、退货和服务承诺",
+      "hours": "营业时间",
+      "faq": "常见客户问题及答案",
+      "team": "团队成员和各自负责的事",
+      "calendar": "会议和预约记录在哪里",
+      "hiring": "我们如何招聘和迎接新同事",
+      "tools": "我们使用的系统，以及谁在用",
+      "access": "密码和权限如何管理",
+      "suppliers": "我们的供应商和订货方式",
+      "stock": "库存在哪里跟踪",
+      "shipping": "订单如何打包和配送"
+    },
+    "short": {
+      "offer": "我们卖什么",
+      "customers": "理想客户",
+      "sales_process": "销售流程",
+      "market": "企业或个人",
+      "deals": "交易记录位置",
+      "prices": "价格和条款",
+      "voice": "品牌语气",
+      "brand": "品牌形象",
+      "current_customers": "现有客户",
+      "competitors": "竞争对手",
+      "accounting": "记账方法",
+      "fiscal_year": "财务年度",
+      "money": "收支记录",
+      "owed": "应收应付",
+      "results": "预算和目标",
+      "policies": "服务政策",
+      "hours": "营业时间",
+      "faq": "常见问题",
+      "team": "分工",
+      "calendar": "预约记录",
+      "hiring": "招聘方式",
+      "tools": "我们的系统",
+      "access": "权限管理",
+      "suppliers": "供应商",
+      "stock": "库存跟踪",
+      "shipping": "订单配送"
+    },
+    "job": {
+      "sales": "销售",
+      "marketing": "市场",
+      "finance": "财务",
+      "support": "客户支持",
+      "front-desk": "前台和行政",
+      "people": "人事",
+      "it": "IT",
+      "operations": "运营"
+    },
+    "card": {
+      "needs": "需要这个",
+      "needsAgo": "需要这个，{{ago}}",
+      "yourAnswer": "你的回答",
+      "hint": "几句简单的话，少于 {{n}} 个字符。内容更多时，写出存放它的文件。",
+      "save": "保存回答",
+      "draftBy": "让 {{name}} 起草",
+      "notNow": "暂不",
+      "drafting": "{{name}} 正在根据办公室已有的资料起草回答。",
+      "draftedBy": "{{name}} 起草，可编辑后保存",
+      "usedBy_one": "{{jobs}} 会用到",
+      "usedBy": "{{jobs}} 会用到",
+      "weekly": "每周询问，直到回答",
+      "failed": "无法保存，请重试。",
+      "saved": "已保存到公司基础信息。",
+      "failedDraft": "无法请 {{name}} 起草，请重试。",
+      "failedLater": "无法暂缓，请重试。",
+      "sentToMichael": "已发给 {{godName}}，由其添加到公司基础信息。",
+      "failedGone": "无法把你的回答加入公司基础信息。请告诉 {{godName}}。",
+      "drafted": "草稿，编辑后保存"
+    }
+  },
+  "knowledgeNotice": {
+    "title": "公司知识始终开启",
+    "body": "你之前关闭了公司知识。它现在没有开关，所以你的团队可以搜索其中的文档。打开列表，移除你不希望他们阅读的文档。",
+    "open": "打开列表"
   }
 }

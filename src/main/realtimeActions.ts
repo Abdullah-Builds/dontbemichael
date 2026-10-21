@@ -161,8 +161,7 @@ const SETTING_POLICY: Record<string, {
   costCapTokens: { tier: 'confirm', type: 'number', min: 0, max: 1_000_000_000 },
   maxTurns: { tier: 'confirm', type: 'number', min: 1, max: 1000 },
   slackEnabled: { tier: 'confirm', type: 'boolean' },
-  webhookEnabled: { tier: 'confirm', type: 'boolean' },
-  semanticMemory: { tier: 'confirm', type: 'boolean' }
+  webhookEnabled: { tier: 'confirm', type: 'boolean' }
 };
 
 const PENDING_TTL_MS = 120_000;

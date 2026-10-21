@@ -112,3 +112,11 @@ test('the Add and Edit agent views read a work style by role, never by the agent
   }
   assert.match(read('src/main/workStyleConvert.ts'), /plainFallback\(req\.text, roleLabel\(req\.ctx\.title\)\)/);
 });
+
+test('a role with a dollar sign reads as typed in the plain description', () => {
+  // Value: protects=the owner's role title is shown as typed; fails_when=String.replace reads $$ or $& in the role as a pattern; why_new=same mistake as swapName and fillBusiness; seam=none
+  assert.equal(
+    W.thirdPerson('You sort the inbox. Your notes stay with you.', 'A$$P $& Desk'),
+    "A$$P $& Desk sorts the inbox. A$$P $& Desk's notes stay with A$$P $& Desk."
+  );
+});

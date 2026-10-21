@@ -419,7 +419,7 @@ export function CapabilitiesTab({ agent }: { agent: Agent }) {
           open={!collapsed.schedules}
           onToggle={(open) => setFold('schedules', open)}
         >
-          <AgentSchedules agentId={agent.id} agentName={name} />
+          <AgentSchedules key={agent.id} agentId={agent.id} agentName={name} businessType={config.businessType} sourceCard={agent.sourceCard} />
         </TriggerCard>
 
         {/* Outside the sections, so a closed Email section still shows them. */}

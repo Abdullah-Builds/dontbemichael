@@ -111,7 +111,7 @@ test('only what is real: mail paths run to the person who watches the mailbox, a
   assert.match(src, /section: 'Connections'/);
   // Counts come from the ledger and the hive log, never from sample numbers.
   assert.match(src, /e\.from !== 'god' \|\| e\.act !== 'request'/, 'delegated = Michael\'s requests today');
-  assert.match(src, /const asks = openQuestions\(t\)\.length; if \(asks\) forYouBy\[t\.assignee\]/, 'for you = open Ask me questions on that person\'s cards');
+  assert.match(src, /const asks = shownQuestions\(t, foundations\)\.length; if \(asks\) forYouBy\[t\.assignee\]/, 'for you = the Ask me questions Needs you shows on that person\'s cards');
   assert.doesNotMatch(src, /closes 6:00|Harbor|Northwind/);
 });
 

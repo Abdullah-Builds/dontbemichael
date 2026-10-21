@@ -25,6 +25,9 @@ import {
   RESEARCH_UNCHECKED_TOOL, NOT_SENT_SUBJECT_OUT, RESEARCH_ONLY_ASKERS, RESEARCH_NAME, RESEARCH_ROLE, isReservedName,
   SENT_AS_SUBJECT, sentAsBody, nameKey, researchText, cleanResearchName, RESEARCH_ONLY_SKILLS
 } from '../shared/research';
+import { FOUNDATION_CAP, foundationAsk } from '../shared/foundations';
+/** A card ask as foundationAsk reads it (the ledger's asks carry kind and foundation). */
+type FoundationAskShape = { kind?: unknown; foundation?: unknown };
 
 import { hookShell, shellCommand, type HookShell } from './hookShell';
 import { CLOSING_COMPLETE_RE } from '../shared/closingTime';
@@ -38,7 +41,7 @@ import {
   existsSync, mkdirSync, readFileSync, writeFileSync, renameSync,
   readdirSync, statSync, lstatSync, realpathSync, rmSync, appendFileSync,
   symlinkSync, unlinkSync, copyFileSync, cpSync, chmodSync,
-  openSync, fstatSync, closeSync, ftruncateSync, writeSync, constants
+  openSync, fstatSync, closeSync, ftruncateSync, writeSync, readSync, constants, type Stats
 } from 'node:fs';
 import { join, dirname, basename, isAbsolute, relative, resolve, sep } from 'node:path';
 import { homedir } from 'node:os';
@@ -288,7 +291,7 @@ export function companyKnowledgeLine(node: string, cli: string, root?: string, m
   const at = root ? ` --root "${root}"` : '';
   // Search by meaning (owner, 2026-09-25) through MemPalace, when it's installed.
   const byMeaning = meaning
-    ? ` Search by meaning with \`"${meaning.bin}" --palace "${meaning.palace}" search "<question>" --wing company\`: it also finds passages that say the same thing in other words, and each result shows its document id.`
+    ? ` Search by meaning with \`${meaning.model ? `MEMPALACE_EMBEDDING_MODEL=${meaning.model} ` : ''}"${meaning.bin}" --palace "${meaning.palace}" search "<question>" --wing company\`: it also finds passages that say the same thing in other words, and each result shows its document id.`
     : '';
   return `COMPANY KNOWLEDGE: the owner keeps company wide information in the company knowledge store: policies, rules, prices, locations, and how the business works. When a task touches any of that, search it before relying on memory or the internet, and follow what it says.${byMeaning} Run \`"${node}" "${cli}" search "<words>"${at}\` for passages with the exact words, \`"${node}" "${cli}" list${at}\` to see what's there, and \`"${node}" "${cli}" get <id>${at}\` for a whole document. Use that Node path exactly: bare \`node\` may not be on your PATH.`;
 }
@@ -298,11 +301,21 @@ export function companyKnowledgeLine(node: string, cli: string, root?: string, m
 export interface MeaningSearch {
   bin: string;
   palace: string;
+  /** The search language's model; named on the command, so a member started
+   *  before the owner changed it still searches the index built with it. */
+  model?: string;
 }
 
-/** What a running agent is told when the owner turns company knowledge off. */
+/** What an agent was last told about company knowledge: on or off, and how
+ *  it searches by meaning, so a change to either reaches it (knowledgeUpdate). */
+function knowledgeSignature(active: boolean, meaning?: MeaningSearch): string {
+  return active ? `on|${meaning ? `${meaning.bin}|${meaning.palace}|${meaning.model ?? ''}` : ''}` : 'off';
+}
+
+/** What a running agent is told when company knowledge no longer holds any
+ *  document (members are pointed at it only while it holds one). */
 export const COMPANY_KNOWLEDGE_OFF =
-  'COMPANY KNOWLEDGE: the owner has turned the company knowledge store off. Its commands stop working until it is turned on again.';
+  'COMPANY KNOWLEDGE: the company knowledge store is empty now, so there is nothing to search in it until the owner adds a document.';
 
 /**
  * How an agent keeps its memory (owner, 2026-09-25): it reads its index (given
@@ -350,7 +363,7 @@ const where = (b: PromptBusiness): string =>
 export function michaelInstructions(name: string, b: PromptBusiness, p: PromptPaths): string {
   const type = b.typeName ? `, a ${b.typeName.toLowerCase()} business` : '';
   const briefing = b.briefing
-    ? b.briefing.replace(/\{Business\}/g, b.name?.trim() || 'the business').replace(/ in \{City\}/g, b.city?.trim() ? ` in ${b.city.trim()}` : '').replace(/\{City\}/g, b.city?.trim() || '')
+    ? b.briefing.replace(/\{Business\}/g, () => b.name?.trim() || 'the business').replace(/ in \{City\}/g, () => (b.city?.trim() ? ` in ${b.city.trim()}` : '')).replace(/\{City\}/g, () => b.city?.trim() || '')
     : '';
   return [
     '## Who you are',
@@ -367,7 +380,7 @@ export function michaelInstructions(name: string, b: PromptBusiness, p: PromptPa
     'If a request is outside every role and too big to do yourself, ask the owner on the Ask me board, with "raisedBy": "god". Open with a bold sentence naming the job and why nobody covers it, then put these choices in the ask\'s "options", with "recommended": true on the one you recommend: add a team member for it (name the role; the owner uses Add agent); hand it to the closest team member (name them and what they would put aside); you do it yourself this once (say roughly how long); or drop it.',
     '',
     '## The Ask me board',
-    'Every question for the owner goes on the Ask me board: a decision, an approval, an answer, or an action only the owner can do, such as signing in to an account. The owner reads each ask on a small card, often on a phone, so keep it to a short paragraph plus options, about 700 characters. Open with one bold sentence saying exactly what you need. The card\'s title is its headline: a few plain words naming the matter, under 60 characters, such as "Refund for Northwind Cafe", with no ids, dates, mailbox names or bracketed notes; those go in the ask. When you offer choices, put them in "options" on the ask, as [{"label": "..."}], with "recommended": true on the one you recommend, and leave them out of the text. When you ask several things, put each question in "parts", as [{"q": "..."}], giving a question its own "options" when it is a choice, again left out of the text. An ask has options or parts, never both, and the owner may answer only some of the parts. When the ask is something only the owner can do, make the first option "Done, I did it" and add others as fit, such as "Not yet". Leave a blank line between paragraphs. Put amounts, file names and account names in backticks. Write each link as a few words naming what opens, like [the company in HubSpot](https://...), never the bare address. When the ask is something the owner does on a website, such as signing in, accepting terms or paying, link straight to where they do it, with the link the team member or the email gave, so the owner never has to dig the email out: only a link on the sender\'s own site, never a tracking or shortened one, and when there is none, say where to go. Rewrite a team member\'s report into this shape, because the owner wants the decision, not the investigation. Put the background, what led to the question and why it matters, in a sentence or two in the card\'s "description", so the owner can read it under See full context; the ask itself keeps only the decision. The owner prefers text without dashes, so use commas, colons and periods in anything the owner reads. Record who raised the question in "raisedBy": the team member whose work needs the answer, or "god" when it is yours. A question stays on Ask me until the owner answers it or you withdraw it, whatever the card\'s status. Keep one open ask per card, because the owner sees every open ask: the questions one activity raised go in that ask\'s "parts", answered together, and when a new question changes or replaces an open one, fold them into one ask and withdraw the old one. Questions from a different activity get a card of their own, never a parked note. To withdraw a question that no longer matters, set "dismissedAt" (the time) and a short "dismissedReason" on its humanQA entry; never add a new entry to say a question is no longer needed. Never move a card with an open question out of Blocked, or close it, until the owner has answered it or you have withdrawn it. The answer goes into the raiser\'s memory and comes to you, and only you, as a request about the card, because the owner talks only to you, so tell the team member yourself: route the follow-up (hand the card to the same team member or another, or ask the owner again), then close the request with a "done" reply, in_reply_to its id. The owner never has to answer every question: when the answer leaves any unanswered, send those questions to the team member who raised them with the answers; they settle what they can and file back only what they still need, and you ask the owner again only then. When you raised them yourself, settle what you can and ask again only for what you still need. Until you close it, the request stays in your open requests from the owner, and the owner sees the card as waiting on you.',
+    'Every question for the owner goes on the Ask me board: a decision, an approval, an answer, or an action only the owner can do, such as signing in to an account. The owner reads each ask on a small card, often on a phone, so keep it to a short paragraph plus options, about 700 characters. Open with one bold sentence saying exactly what you need. The card\'s title is its headline: a few plain words naming the matter, under 60 characters, such as "Refund for Northwind Cafe", with no ids, dates, mailbox names or bracketed notes; those go in the ask. When you offer choices, put them in "options" on the ask, as [{"label": "..."}], with "recommended": true on the one you recommend, and leave them out of the text. When you ask several things, put each question in "parts", as [{"q": "..."}], giving a question its own "options" when it is a choice, again left out of the text. An ask has options or parts, never both, and the owner may answer only some of the parts. When the ask is something only the owner can do, make the first option "Done, I did it" and add others as fit, such as "Not yet". Leave a blank line between paragraphs. Put amounts and account names in backticks, and name each file by its full path, with its file ending, in backticks, so the owner can open it. Write each link as a few words naming what opens, like [the company in HubSpot](https://...), never the bare address. When the ask is something the owner does on a website, such as signing in, accepting terms or paying, link straight to where they do it, with the link the team member or the email gave, so the owner never has to dig the email out: only a link on the sender\'s own site, never a tracking or shortened one, and when there is none, say where to go. Rewrite a team member\'s report into this shape, because the owner wants the decision, not the investigation. Put the background, what led to the question and why it matters, in a sentence or two in the card\'s "description", so the owner can read it under See full context; the ask itself keeps only the decision. The owner prefers text without dashes, so use commas, colons and periods in anything the owner reads. Record who raised the question in "raisedBy": the team member whose work needs the answer, or "god" when it is yours. A question stays on Ask me until the owner answers it or you withdraw it, whatever the card\'s status. Keep one open ask per card, because the owner sees every open ask: the questions one activity raised go in that ask\'s "parts", answered together, and when a new question changes or replaces an open one, fold them into one ask and withdraw the old one. Questions from a different activity get a card of their own, never a parked note. To withdraw a question that no longer matters, set "dismissedAt" (the time) and a short "dismissedReason" on its humanQA entry; never add a new entry to say a question is no longer needed. Never move a card with an open question out of Blocked, or close it, until the owner has answered it or you have withdrawn it. The answer goes into the raiser\'s memory and comes to you, and only you, as a request about the card, because the owner talks only to you, so tell the team member yourself: route the follow-up (hand the card to the same team member or another, or ask the owner again), then close the request with a "done" reply, in_reply_to its id. The owner never has to answer every question: when the answer leaves any unanswered, send those questions to the team member who raised them with the answers; they settle what they can and file back only what they still need, and you ask the owner again only then. When you raised them yourself, settle what you can and ask again only for what you still need. Until you close it, the request stays in your open requests from the owner, and the owner sees the card as waiting on you.',
     'A card ends only as Done: with a "result" when the work is finished, or, when the owner decides to stop it (an answer such as "drop it"), with "closedBy": "owner" and a "closedReason" in the owner\'s words, so the board shows it was their call. Never delete a card. When the owner closes or moves a card themselves, you get a note saying so: tell whoever has it and route the work to match. Only the owner takes a card out of Done, to correct one marked done by mistake; never reopen or delete a done card yourself: the app puts back any that an agent reopens or deletes, and tells you.',
     '',
     '## Triage',
@@ -385,6 +398,11 @@ export function michaelInstructions(name: string, b: PromptBusiness, p: PromptPa
     '## Scheduled runs',
     'A scheduled run names a job, and its message carries that job\'s focus for this run only, such as what to cover at the hourly ops standup. A scheduled run needs no reply, so do not answer it.',
     'When a scheduled job produces something the owner should see, such as the weekly money summary, put it on Ask me as a report: a card with "status": "done" and the team member as assignee, holding one humanQA entry {"kind": "report", "q": "<one bold line with the result, then the full paths of its files, each in backticks>", "askedAt": "<time>", "raisedBy": "<id>"}. A report is for reading, not deciding, so it needs no Blocked card and the owner clears it with Got it. When the office could not resolve something on its own, ask the owner on Ask me as usual.',
+    '',
+    '## Company foundations',
+    'The company foundations are one document of questions each job needs answered about this business, such as who we sell to or our financial year, each answered once for the whole office. The app gives you the whole document at the start of each session and when it changes, with the empty questions the work hit, and gives each team member its own job\'s part. The app alone writes it: answers reach it from the owner\'s foundation cards and from what the team learns.',
+    'When a team member\'s work needs an empty question, the app tells you the first time ("Foundation gap"). Raise one card for it on Ask me unless one is open for that question, never one per task or per member: title it with the question, assign it to the team member whose work hit it, and give it one humanQA entry {"kind": "foundation", "foundation": "<question id>", "q": "<one bold sentence on what the work did without it, then which other jobs use the answer>", "askedAt": "<time>", "raisedBy": "<the member\'s id>"}. The owner answers it on the card, has the member draft it, or chooses Not now, which hides it for a week; the app writes the owner\'s answer into the foundations itself, so when the answer request comes, close the card as done. Never raise a card for a question no work has hit. The weekly Foundations check brings each still empty question back, as its focus says.',
+    'When the owner\'s answer on any other card, or in your conversation, answers a foundations question, send it to "foundations" with "foundation": {"question": "<id>", "answer": "<under ' + FOUNDATION_CAP + ' characters>", "source": {"owner": "<the id of the owner\'s message>"}}. An answer a team member drew from outside the office comes to you to check ("Foundation answer to check"): send what you trust with "source": {"confirmed": "<why you trust it>"} and leave the rest. When two answers differ, or a member suggests changing the owner\'s answer, the app keeps the first and tells you; ask the owner on a foundation card only when it matters.',
     '',
     '## Staying cheap',
     'The owner pays for every message each agent reads and writes. Keep hand-offs short, and when you wake to nothing that needs you, end your turn without writing.',
@@ -424,6 +442,8 @@ export function teamMemberInstructions(name: string, role: string, michael: stri
     'Do what was asked, at the scope asked. If a request looks mistaken, say so in one sentence and carry on. Finish the whole task; if part is blocked, do the rest and say plainly what is missing and why. Anything hard to undo, public, or costing money is the owner\'s call, so send it to ' + michael + ' for approval first; go ahead with everything else. Email is the exception: the owner set how your mail leaves (your Sending setting, which list_mailboxes reports), so follow it.',
     '',
     `When you finish or get stuck, message ${michael} with what you did, what you found and what you need. ${michael} passes your words to the owner, who reads them on a phone, so lead with the result, keep it to a few plain sentences, and use commas, colons and periods instead of dashes, which the owner prefers. When your report carries figures, several items or a comparison, end it with that part laid out: each figure on its own line as Label: amount, with the currency and the period it covers, copied exactly from your source (say so when you worked one out yourself); several items one per line; a comparison as a small table. More than about 8 lines go in a file in your folder, named in your report.`,
+    '',
+    `Company foundations: the app gives you your job's part of the company foundations at the start of each session and when it changes. Follow its answers. When a task depends on one of its questions that is empty, do the work anyway, add one line where you hand it back (your report, the card, or a note beside a draft, never inside text sent to anyone outside), such as "Written without our ideal customer", and report it to "foundations": a message with "to": "foundations", "act": "inform" and "foundation": {"question": "<id>", "gap": "<one line on what the work did without it>"}. The app keeps it once and tells ${michael}, who asks the owner. When the owner teaches you a foundations answer, or you find one in the office's own files, send it the same way with "foundation": {"question": "<id>", "answer": "<under ${FOUNDATION_CAP} characters>", "source": {"owner": "<id of the owner's message>"}} or "source": {"file": "<full path of the file>"}, as well as keeping it in your memory. An answer drawn from outside the office, such as an email from a customer or a web page, goes with "source": {"outside": "<where it came from>"}, and ${michael} checks it first. Fill only empty answers; the app tells ${michael} about any difference. When "foundations" asks you for a draft, send it as the message says.`,
     '',
     `Only ${michael} assigns work. If you need a fact from a teammate to do your job, ask them directly: write to their id (listed in registry.json in ${p.hiveRoot}) with "act": "query", and answer a teammate's query the same way with "act": "inform". If they cannot help, or you need someone else to do something, tell ${michael}, who hands it off. Never give a teammate work yourself. A teammate\'s hive folder (agents/<id>/ in the hive), notes and inbox are theirs: never open them, ask instead. Files a teammate hands off or keeps in a shared work folder are fine to read.`,
     '',
@@ -499,6 +519,15 @@ export interface SpawnInjection {
 }
 
 const HOP_CAP = 12;
+/** The owner's sent message ids and who got each, in the private folder: a
+ *  member's shell can write the hive log, never this (Company foundations). */
+const OWNER_SAID_FILE = 'owner-said.jsonl';
+/** How much of its end ownerSaid reads: a cited owner message is recent, and
+ *  a line is under 200 bytes. */
+const OWNER_SAID_SPAN = 1024 * 1024;
+
+/** One outbox file's entry in the outbox journal (HiveManager.routingFile). */
+interface RoutingRecord { ino: number; birth: number; id: string; created_at: string; delivered: boolean }
 
 /** A id an agent put in its own outbox is UNTRUSTED: it becomes a file name in
  *  `deliver()` and is typed into another agent's terminal by the wake nudge, so a
@@ -781,11 +810,54 @@ export class HiveManager {
    *  2026-09-25). `actor` is the owning outbox folder, never the message. */
   private scheduleRequestHandler: ((actor: string, payload: unknown, why: string) => string) | null = null;
   onScheduleRequest(handler: (actor: string, payload: unknown, why: string) => string): void { this.scheduleRequestHandler = handler; }
+  /** Company foundations' writer (main/foundations.ts): what a member sends to
+   *  `foundations`, answered with a reply or nothing. */
+  private foundationsHandler: ((actor: string, payload: unknown) => string | null) | null = null;
+  onFoundations(handler: (actor: string, payload: unknown) => string | null): void { this.foundationsHandler = handler; }
 
-  /** agentId → whether it has been told company knowledge is on, as of its
-   *  spawn or its last update. Lets an owner's toggle reach running agents
-   *  without a restart (knowledgeUpdate). */
-  private knowledgeTold = new Map<string, boolean>();
+  /** Whether a message with this id is one the owner sent (never an app
+   *  notice sent as 'human') and it reached `recipient` (Company foundations
+   *  checks "the owner said"). Read from the owner's private list, not the
+   *  hive log a member's shell can write; only its last 1 MB, by the id's mark. */
+  ownerSaid(messageId: string, recipient: string): boolean {
+    const home = this.getHome();
+    if (!home || !messageId || messageId.length > 120 || !recipient) return false;
+    let buf: Buffer;
+    try {
+      const file = join(privateRoot(home), OWNER_SAID_FILE);
+      const size = statSync(file).size;
+      const span = Math.min(size, OWNER_SAID_SPAN);
+      buf = Buffer.allocUnsafe(span);
+      const fd = openSync(file, 'r');
+      try { readSync(fd, buf, 0, span, size - span); } finally { closeSync(fd); }
+    } catch { return false; }
+    const mark = Buffer.from(`"id":${JSON.stringify(messageId)},`);
+    for (let at = buf.indexOf(mark); at !== -1; at = buf.indexOf(mark, at + mark.length)) {
+      const start = buf.lastIndexOf(10, at) + 1;
+      const end = buf.indexOf(10, at);
+      try {
+        const e = JSON.parse(buf.toString('utf8', start, end === -1 ? undefined : end)) as { id?: unknown; to?: unknown };
+        if (e.id === messageId && Array.isArray(e.to) && e.to.includes(recipient)) return true;
+      } catch { /* a torn line */ }
+    }
+    return false;
+  }
+
+  /** Keep an owner message's id and who got it for ownerSaid (never its words). */
+  private recordOwnerSaid(id: string, to: string[]): void {
+    const home = this.getHome();
+    if (!home) return;
+    try {
+      mkdirSync(privateRoot(home), { recursive: true });
+      appendFileSync(join(privateRoot(home), OWNER_SAID_FILE), `${JSON.stringify({ id, to: [...new Set(to)], at: Date.now() })}\n`, 'utf8');
+    } catch { /* best effort: an uncounted message only sends its answer to Michael to check */ }
+  }
+
+  /** agentId → what it was last told about company knowledge, as of its
+   *  spawn or its last update: on or off (on while the store holds a
+   *  document), and how it searches by meaning (knowledgeSignature), so a
+   *  change reaches running agents without a restart (knowledgeUpdate). */
+  private knowledgeTold = new Map<string, string>();
   /** Per agent: the members whose hive folders its Read rules hid when it
    *  started (AgentFolderPolicy.walledMembers). The hook refuses a search over
    *  every member's folder while someone hired since is not among them. */
@@ -799,9 +871,10 @@ export class HiveManager {
    */
   knowledgeUpdate(agentId: string, k: { active: boolean; cliPath?: string; root?: string; meaning?: MeaningSearch }): string | null {
     const told = this.knowledgeTold.get(agentId);
-    if (told === undefined || told === k.active) return null;
+    const now = knowledgeSignature(k.active, k.meaning);
+    if (told === undefined || told === now) return null;
     if (k.active && !k.cliPath) return null;
-    this.knowledgeTold.set(agentId, k.active);
+    this.knowledgeTold.set(agentId, now);
     return k.active ? companyKnowledgeLine(this.nodeCommand(), k.cliPath!, k.root, k.meaning) : COMPANY_KNOWLEDGE_OFF;
   }
 
@@ -1218,7 +1291,7 @@ export class HiveManager {
     const root = this.root();
     if (!root) return { args: [], env: {} };
     this.ensureHive();
-    this.knowledgeTold.set(meta.id, !!opts.knowledgeGraph);
+    this.knowledgeTold.set(meta.id, knowledgeSignature(!!opts.knowledgeGraph, opts.knowledgeGraph ? opts.meaningSearch : undefined));
 
     const dir = this.agentDir(meta.id);
     mkdirSync(join(dir, 'inbox', '.done'), { recursive: true });
@@ -1893,6 +1966,11 @@ export class HiveManager {
         SubagentStop: [entry()],
         PreToolUse: [entry('*')],
         PostToolUse: [entry('*')],
+        // A call that failed: the floor ends it by its id, like a finished one.
+        PostToolUseFailure: [entry('*')],
+        // A finished batch names every call in it, the ones the engine refused
+        // on its own too (a deny rule, a declined prompt), which send nothing else.
+        PostToolBatch: [entry()],
         UserPromptSubmit: [entry()],
         Notification: [entry()],
         SessionStart: [entry()],
@@ -3031,7 +3109,7 @@ export class HiveManager {
     const to = lowerTo;
     // A reply to the app's own senders is dropped quietly, as for everyone,
     // so a refusal note never starts a loop of answers.
-    if (['scheduler', 'heartbeat', 'mail', 'system', PRIVACY_CHECK_SENDER].includes(to)) {
+    if (['scheduler', 'heartbeat', 'mail', 'system', 'foundations', PRIVACY_CHECK_SENDER].includes(to)) {
       this.appendLog({ kind: 'drop', reason: 'reply-to-system-sender', from: RESEARCH_ID, to: logTo, id: logId });
       return 'denied';
     }
@@ -3183,15 +3261,18 @@ export class HiveManager {
 
   /** Inject a message directly (used by the orchestrator / UI / tests).
    *  `upkeep`: the app's own upkeep note (shared/upkeep.ts), stamped here by
-   *  the code that sends it, never read from a message's file or words. */
-  send(partial: Partial<HiveMessage>, from = 'system', upkeep?: UpkeepKind): HiveMessage {
+   *  the code that sends it, never read from a message's file or words.
+   *  `byOwner`: the owner typed or clicked this (the window's sends as
+   *  'human'). The app's own notices go as 'human' too, so only this flag
+   *  says the owner said it (Company foundations, ownerSaid). */
+  send(partial: Partial<HiveMessage>, from = 'system', upkeep?: UpkeepKind, byOwner = false): HiveMessage {
     const msg = this.normalize(partial, from);
-    this.routeMessage(msg, upkeep);
+    this.routeMessage(msg, upkeep, byOwner && from === 'human');
     this.commit(`hive: msg ${msg.from}→${msg.to} (${msg.act})`);
     return msg;
   }
 
-  private routeMessage(msg: HiveMessage, upkeep?: UpkeepKind): void {
+  private routeMessage(msg: HiveMessage, upkeep?: UpkeepKind, byOwner = false): void {
     if (msg.hops > HOP_CAP) {
       // loop guard — drop a runaway message rather than let agents ping-pong.
       // There's no human queue to fall back on; the god agent owns conflicts,
@@ -3234,7 +3315,7 @@ export class HiveManager {
     // The scheduler, the heartbeat and the mail app send; they don't read. A
     // reply to one is dropped quietly instead of bouncing back to Michael as
     // undeliverable (an approval's "send it now" would otherwise bounce).
-    if (msg.to === 'scheduler' || msg.to === 'heartbeat' || msg.to === 'mail' || msg.to === PRIVACY_CHECK_SENDER) {
+    if (msg.to === 'scheduler' || msg.to === 'heartbeat' || msg.to === 'mail' || msg.to === 'foundations' || msg.to === PRIVACY_CHECK_SENDER) {
       this.appendLog({ kind: 'drop', reason: 'reply-to-system-sender', from: msg.from, to: msg.to, id: msg.id });
       return;
     }
@@ -3367,6 +3448,7 @@ export class HiveManager {
     }
     if (held.length) this.holdForMichael(msg, held, godId);
     this.appendLog({ kind: 'message', from: msg.from, to: msg.to, act: msg.act, subject: msg.subject, id: msg.id, delivered });
+    if (byOwner) this.recordOwnerSaid(msg.id, delivered);
     this.lastRouted = { id: msg.id, delivered };
     this.emitMessage(msg, targets);
     // Main-process observer (e.g. the closing-time controller watching for the
@@ -3453,6 +3535,55 @@ export class HiveManager {
    *  that keeps writing broken files is not woken into a loop. */
   static readonly QUARANTINE_NOTICE_GAP_MS = 10 * 60_000;
 
+  /** The outbox journal (Codex review, ship 2026-10-18): the id and time the
+   *  app chose for a member's outbox file, kept until the file is archived. A
+   *  pass that died after delivering it delivers it again under the same id,
+   *  so the copy replaces itself, or, once marked delivered, only archives it.
+   *  Keyed by the file's identity, not its name or words (the sent stamp
+   *  rewrites the words in place). In the app's private folder, out of every
+   *  agent's reach. */
+  private routingFile(agentId: string, f: string): string | null {
+    const home = this.getHome();
+    return home ? join(privateRoot(home), 'outbox-routing', agentId, f) : null;
+  }
+
+  private readRouting(agentId: string, f: string, st: Stats): RoutingRecord | null {
+    const file = this.routingFile(agentId, f);
+    if (!file || !existsSync(file)) return null;
+    try {
+      const r = JSON.parse(readFileSync(file, 'utf8')) as Partial<RoutingRecord>;
+      if (r.ino === st.ino && r.birth === st.birthtimeMs && isSafeMessageId(r.id) && typeof r.created_at === 'string' && Number.isFinite(Date.parse(r.created_at))) {
+        return { ino: r.ino, birth: r.birth, id: r.id, created_at: r.created_at, delivered: r.delivered === true };
+      }
+    } catch { /* unreadable: started afresh */ }
+    // Another file under the same name: its record is stale.
+    try { rmSync(file, { force: true }); } catch { /* written over below */ }
+    return null;
+  }
+
+  private writeRouting(agentId: string, f: string, rec: RoutingRecord): void {
+    const file = this.routingFile(agentId, f);
+    if (!file) return;
+    // A record that can't be written leaves routing as it was without one.
+    try { mkdirSync(dirname(file), { recursive: true }); this.atomicWriteJson(file, rec); } catch { /* no journal */ }
+  }
+
+  private dropRouting(agentId: string, f: string): void {
+    const file = this.routingFile(agentId, f);
+    if (file) try { rmSync(file, { force: true }); } catch { /* pruned on a later pass */ }
+  }
+
+  /** Records whose file is no longer in the outbox: archived before its
+   *  record went (a crash in between) or set aside. */
+  private pruneRouting(agentId: string, present: Set<string>): void {
+    const file = this.routingFile(agentId, 'x');
+    const dir = file ? dirname(file) : null;
+    if (!dir || !existsSync(dir)) return;
+    try {
+      for (const name of readdirSync(dir)) if (!present.has(name)) rmSync(join(dir, name), { force: true });
+    } catch { /* next pass */ }
+  }
+
   /** Move an outbox file into its .sent archive. A name already archived gets a
    *  unique prefix instead of replacing the earlier message (rename overwrites),
    *  and a file that cannot be moved at all is removed, so it is never routed
@@ -3522,7 +3653,9 @@ export class HiveManager {
       if (!outbox || !existsSync(outbox)) continue;
       const badDir = home ? join(privateRoot(home), 'research-outbox', 'refused') : join(outbox, '.sent');
       if (home) mkdirSync(badDir, { recursive: true });
-      for (const f of readdirSync(outbox)) {
+      const names = readdirSync(outbox);
+      if (!research) this.pruneRouting(id, new Set(names));
+      for (const f of names) {
         if (!f.endsWith('.json')) continue;
         const full = join(outbox, f);
         // Research's file names are its own words: the shared log keeps a hash.
@@ -3574,6 +3707,7 @@ export class HiveManager {
           // to someone else's message (another member's inbox, Michael's sent
           // mail) is set aside, never sent again as new (Codex review, ship
           // 2026-10-18). It is also the file stamped in place below.
+          let fileStat: Stats | null = null;
           if (!research) {
             const st = lstatSync(full);
             if (!st.isFile() || st.nlink !== 1) {
@@ -3581,6 +3715,7 @@ export class HiveManager {
               this.archiveOutboxFile(full, badDir, `bad-${f}`);
               continue;
             }
+            fileStat = st;
           }
           // The app makes every id: one an agent wrote can repeat (a second
           // message with it overwrote the first in the inbox) or be missing
@@ -3591,6 +3726,20 @@ export class HiveManager {
           // could close the owner's next question or hide a message (Codex
           // review, ship 2026-10-18).
           msg.created_at = new Date().toISOString();
+          // A file this pass already chose an id for (a pass that died before
+          // archiving it) keeps that id and time; a new one is journaled before
+          // it is delivered.
+          const journal = fileStat ? this.readRouting(id, f, fileStat) : null;
+          if (journal) { msg.id = journal.id; msg.created_at = journal.created_at; }
+          const record = (delivered: boolean): void => {
+            if (fileStat) this.writeRouting(id, f, { ino: fileStat.ino, birth: fileStat.birthtimeMs, id: msg.id, created_at: msg.created_at, delivered });
+          };
+          if (!journal) record(false);
+          const archived = (dest: string): void => {
+            this.archiveOutboxFile(full, dest, f);
+            // Only once it has left the outbox: a rename that failed keeps it.
+            if (fileStat && !existsSync(full)) this.dropRouting(id, f);
+          };
           // The sent copy carries what was delivered: the app's id, sender and
           // time (and repaired text), written in place before the one rename
           // that archives it. Only a plain file of the agent's own is written
@@ -3604,17 +3753,43 @@ export class HiveManager {
           if (msg.to === 'scheduler' && schedule !== undefined && this.scheduleRequestHandler) {
             // A schedule request, not mail: main files it for the owner and the
             // scheduler answers the asking agent (and only that agent).
-            let reply: string;
-            // The message body is the agent's reason, shown on the owner's card.
-            try { reply = this.scheduleRequestHandler(id, schedule, typeof msg.body === 'string' ? msg.body : ''); } catch (e) {
-              reply = 'Schedule request not sent: the app hit an error. Try again later.';
-              console.error('[hive] schedule request', e);
+            // Filed before a pass died: never filed or answered twice.
+            if (!journal?.delivered) {
+              let reply: string;
+              // The message body is the agent's reason, shown on the owner's card.
+              try { reply = this.scheduleRequestHandler(id, schedule, typeof msg.body === 'string' ? msg.body : ''); } catch (e) {
+                reply = 'Schedule request not sent: the app hit an error. Try again later.';
+                console.error('[hive] schedule request', e);
+              }
+              this.appendLog({ kind: 'schedule-request', from: id, id: msg.id });
+              this.routeMessage(this.normalize({ to: id, act: 'inform', subject: 'Schedule request', body: reply }, 'scheduler'));
+              record(true);
             }
-            this.appendLog({ kind: 'schedule-request', from: id, id: msg.id });
-            this.routeMessage(this.normalize({ to: id, act: 'inform', subject: 'Schedule request', body: reply }, 'scheduler'));
             // Research's file is moved as it is, as at its gate below.
             if (!research) stampSent();
-            this.archiveOutboxFile(full, join(outbox, '.sent'), f);
+            archived(join(outbox, '.sent'));
+            routed++;
+            continue;
+          }
+          // Company foundations (office-foundations.md): an answer, a gap or a
+          // draft for the app's one writer, never mail. Research sends none; its
+          // message meets its own gate below, which drops it. A plain reply to
+          // `foundations` carries no payload and is dropped quietly below, as
+          // replies to the scheduler are, so nothing bounces back and forth.
+          const foundation = (partial as { foundation?: unknown }).foundation;
+          if (msg.to === 'foundations' && foundation !== undefined && this.foundationsHandler && !research) {
+            if (!journal?.delivered) {
+              let reply: string | null;
+              try { reply = this.foundationsHandler(id, foundation); } catch (e) {
+                reply = 'Not saved: the app hit an error. Try again later.';
+                console.error('[hive] foundations', e);
+              }
+              this.appendLog({ kind: 'foundations', from: id, id: msg.id });
+              if (reply) this.routeMessage(this.normalize({ to: id, act: 'inform', subject: 'Company foundations', body: reply }, 'foundations'));
+              record(true);
+            }
+            stampSent();
+            archived(join(outbox, '.sent'));
             routed++;
             continue;
           }
@@ -3634,15 +3809,17 @@ export class HiveManager {
             // Research's archive is the app's own record: its file is moved as
             // it is, never written through (red team, third ship).
             if (!research) stampSent();
-            this.archiveOutboxFile(full, dest, f);
+            archived(dest);
             routed++;
             continue;
           }
-          this.routeMessage(msg);
-          // Stamped in place, then one rename archives it. A crash between
-          // the delivery and the rename delivers it again, under a new id.
+          // Delivered before a pass died: only archived now. A crash between
+          // the delivery and its record delivers it again under the same id,
+          // so the copy in the inbox replaces itself.
+          if (!journal?.delivered) { this.routeMessage(msg); record(true); }
+          // Stamped in place, then one rename archives it.
           stampSent();
-          this.archiveOutboxFile(full, join(outbox, '.sent'), f); // archive, don't reprocess
+          archived(join(outbox, '.sent')); // archive, don't reprocess
           routed++;
         } catch {
           // malformed file — quarantine so we don't spin on it
@@ -3962,21 +4139,24 @@ export class HiveManager {
 
   // — clearing a conversation safely (src/shared/safeClear.ts) —
 
-  /** Task cards assigned to an agent that aren't done. */
+  /** Task cards assigned to an agent that aren't done. A foundation card
+   *  waits on the owner, not the member's work, so it never holds a clear
+   *  (the answer reaches the member through its foundations section). */
   openCardsFor(id: string): number {
     const ledger = this.tasks() as { tasks?: HiveTask[] };
     const tasks = Array.isArray(ledger?.tasks) ? ledger.tasks : [];
-    return tasks.filter((t) => t?.assignee === id && t.status !== 'done').length;
+    return tasks.filter((t) => t?.assignee === id && t.status !== 'done' && !(t.humanQA ?? []).some((e) => foundationAsk(e as FoundationAskShape))).length;
   }
 
-  /** Ask me questions an agent raised (or, unrecorded, on its card) still unanswered. */
+  /** Ask me questions an agent raised (or, unrecorded, on its card) still
+   *  unanswered; foundation questions left out, as in openCardsFor. */
   openQuestionsRaisedBy(id: string): number {
     const ledger = this.tasks() as { tasks?: HiveTask[] };
     const tasks = Array.isArray(ledger?.tasks) ? ledger.tasks : [];
     let n = 0;
     for (const t of tasks) {
       // Every unanswered, unwithdrawn ask is open (askMeRouting.ts).
-      for (const i of openAskIndexes(t?.humanQA)) if ((t.humanQA![i].raisedBy ?? t.assignee) === id) n++;
+      for (const i of openAskIndexes(t?.humanQA)) if (!foundationAsk(t.humanQA![i] as FoundationAskShape) && (t.humanQA![i].raisedBy ?? t.assignee) === id) n++;
     }
     return n;
   }
@@ -4464,6 +4644,7 @@ export class HiveManager {
     this.ownerFlags(id, (f) => ({ ...f, deliveredAt: f.deliveredAt ?? Date.now(), notSentAt: undefined }));
     // The log is committed with the office: the owner's words stay out of it.
     this.appendLog({ kind: 'message', from: 'human', to: godId, act: msg.act, subject: 'Owner question', id: msg.id, delivered: [godId] });
+    this.recordOwnerSaid(msg.id, [godId]);
     this.emitMessage(msg, [godId]);
     try { this.routedObserver?.(msg, [godId]); } catch { /* observer error */ }
     this.refreshOwnerRequests();
@@ -6143,6 +6324,11 @@ process.stdin.on('end', () => {
   payload.agent_id = me || payload.agent_id || null;
   // The spawn's secret (issue #61): the app works out the sender from it.
   payload.hook_token = process.env.HIVE_HOOK_SEAL || null;
+  // The app reads only which calls ended, never their output: a big output
+  // would make the frame too big to send, and the call would never end.
+  const ev = payload.hook_event_name;
+  if (ev === 'PostToolBatch') payload.tool_calls = (Array.isArray(payload.tool_calls) ? payload.tool_calls : []).filter((c) => c && typeof c.tool_use_id === 'string').map((c) => ({ tool_use_id: c.tool_use_id }));
+  if (ev === 'PostToolUse' || ev === 'PostToolUseFailure') { delete payload.tool_response; delete payload.error; }
   const sock = process.env.HIVE_SOCK;
   if (isStatus) {
     // Status-line mode: Claude Code pipes the session status JSON (incl.

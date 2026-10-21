@@ -197,3 +197,30 @@ export function companyProfileContext(
     'Everything else about the company (products and prices, ideal customers, how it sells, policies) is in the company knowledge store.'
   ].join('\n');
 }
+
+/**
+ * A profile page's save on top of the latest profile: only the fields the
+ * owner changed since the page opened are taken from the page, so a page left
+ * open never undoes a newer answer (Company foundations writes opening hours
+ * and the financial year into the profile; review, 2026-10-20).
+ */
+export function mergeEditedProfile(opened: CompanyProfile, edited: CompanyProfile, latest: CompanyProfile): CompanyProfile {
+  return cleanCompanyProfile(mergeEdits(opened, edited, latest));
+}
+
+const isPlain = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+
+/** Field by field, inside nested parts too (the address, social links), so
+ *  two pages that changed different lines of the address both keep theirs. */
+function mergeEdits(opened: unknown, edited: unknown, latest: unknown): Record<string, unknown> {
+  const was = isPlain(opened) ? opened : {};
+  const now = isPlain(edited) ? edited : {};
+  const out: Record<string, unknown> = { ...(isPlain(latest) ? latest : {}) };
+  for (const k of new Set([...Object.keys(was), ...Object.keys(now)])) {
+    if (JSON.stringify(was[k]) === JSON.stringify(now[k])) continue;
+    if (now[k] === undefined) delete out[k];
+    else if (isPlain(now[k]) && isPlain(was[k])) out[k] = mergeEdits(was[k], now[k], out[k]);
+    else out[k] = now[k];
+  }
+  return out;
+}

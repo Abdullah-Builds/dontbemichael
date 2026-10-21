@@ -243,6 +243,13 @@ The view never folds the 400,000 row ledger: it reads the processor's rollups.
 | Try a stronger model | 10 or more decisions and kept as is under 60%, or 3 or more reopens | next tier up in the same provider; Michael included |
 
 - Each recommendation shows its numbers ("Toby: 14 runs, 12 found nothing to do").
+- **Early patterns** (owner, 2026-10-19): before 14 live days the same four rules run on the
+  live days so far, each evidence minimum halved (5 runs; 10 pieces and 5 decisions; 2
+  reopens), with the same shares. What they find shows under a bold "What Pulse sees so far,
+  not advice yet." as plain facts ("Toby's "Benefits inbox check" found nothing to do on 6
+  of 8 runs so far"), at most 3, the most evidence first: no Apply, no Not now, no saving,
+  and a model fact names no model. On day 14 the advice takes over (`adviceFor(input,
+  { from, scale })`, `PulseView.early`).
 - Model advice shows observed cost per piece; a projected saving appears only when
   both models have a known price (`knownPrice(model)` returns nothing for a model the
   table does not list, unlike `priceFor`, which falls back to Sonnet). Add Fable and
@@ -443,7 +450,7 @@ so the view can show what changed and when.
      -> PERSIST (insert telemetry_events, one prepared statement) -> PROCESSOR (cursor) -> rollups, runs, advice -> push
   shadow paths:
     nil agent id or unknown kind ......... dropped, counted in a debug counter (Section 8)
-    empty tasks.json / no cards .......... no card events; view shows zeros, says so
+    empty tasks.json / no cards .......... no card events; those tiles fold into quiet chips (pulse-smart-view.md, owner 2026-10-19)
     malformed tasks.json ................. tick skipped, last good snapshot kept (Section 2)
     insert fails ......................... D15: failure counted per day, flagged, advice skips the day
     duplicate event (replay after crash) . cursor saved in the same transaction as rollups: no double count

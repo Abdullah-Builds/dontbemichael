@@ -247,7 +247,7 @@ export function parseNpmCmdShim(shimPath: string, content: string): NpmShimTarge
    *  expands WITH a trailing backslash) into an absolute, normalized path. Any
    *  other surviving `%` means a variable we did not model → refuse. */
   const expand = (raw: string): string | null => {
-    let s = raw.replace(/%~dp0%?|%dp0%/gi, `${dir}\\`);
+    let s = raw.replace(/%~dp0%?|%dp0%/gi, () => `${dir}\\`);
     if (s.includes('%')) return null;
     if (!s.trim()) return null;
     // `<dir>\` + `\node_modules\…` produces a doubled separator that Windows

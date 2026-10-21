@@ -64,7 +64,9 @@ export interface TidyResult {
   id: string;
   tidied: boolean;
   reason: string;
-  stats?: { added: number; updated: number; deleted: number; procedures: number; repeats: number };
+  stats?: { added: number; updated: number; deleted: number; procedures: number; repeats: number; dupes: number };
+  /** Model ops the checks dropped, by reason. Absent when none were dropped. */
+  dropped?: Record<string, number>;
 }
 
 /** A held notes file whose notes are now elsewhere (the index or the inbox):
@@ -203,7 +205,7 @@ export class MemoryTidy {
       restore();
       return this.abort(id, 'model-failed', 'no list of changes in the response');
     }
-    const ops = validateOps(raw, entries);
+    const { ops, dropped } = validateOps(raw, entries);
     const outcome = applyOps(entries, ops, today);
 
     try {
@@ -237,13 +239,15 @@ export class MemoryTidy {
     dropHeld(processing);
 
     const tokens = estimateTokens(entriesBlock(outcome.entries));
+    const droppedCount = Object.keys(dropped).length;
     try {
       this.appendLog({
         kind: 'memory-tidy', agentId: id, notes: notes.length, migrated: migrating,
-        entries: outcome.entries.length, tokens, overBudget: tokens > INDEX_BUDGET_TOKENS, ...outcome.stats
+        entries: outcome.entries.length, tokens, overBudget: tokens > INDEX_BUDGET_TOKENS, ...outcome.stats,
+        ...(droppedCount ? { dropped } : {})
       });
     } catch { /* logging is best-effort */ }
-    return { id, tidied: true, reason: migrating ? 'migrated' : 'tidied', stats: outcome.stats };
+    return { id, tidied: true, reason: migrating ? 'migrated' : 'tidied', stats: outcome.stats, ...(droppedCount ? { dropped } : {}) };
   }
 
   private abort(id: string, reason: string, detail?: string): TidyResult {

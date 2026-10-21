@@ -50,9 +50,14 @@ export interface AnswerMessage {
  *  come from the owner and into Michael's context, so it can never pass for a
  *  new line of instructions. */
 export function cardText(s: string | undefined, max = 120): string {
-  const one = (s ?? '').replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim();
+  // C1 controls fold too (a NEL reads as a new line), and format characters
+  // such as a right to left override are dropped, as in toolLine.
+  const one = (s ?? '').replace(/\p{Cf}+/gu, '').replace(/[\u0000-\u001f\u007f-\u009f]+/g, ' ').replace(/\s+/g, ' ').trim();
   return one.length > max ? `${one.slice(0, max - 1)}…` : one;
 }
+
+/** Most of a question kept in Michael's request; the card has all of it. */
+const QUESTION_MAX = 2000;
 
 /**
  * The messages an answer sends (docs/designs/card-lifecycle.md): one, a REQUEST
@@ -76,7 +81,9 @@ export function answerMessages(p: {
   const title = cardText(p.title);
   // The card id comes from the ledger agents write, so it is cleaned like the title.
   const id = cardText(p.taskId, 60);
-  const qa = [`Q: ${p.q}`, `A: ${p.a}`];
+  // The question is the raiser's text, so it is folded to one labelled line
+  // like the title. The answer is the owner's own words and stays as written.
+  const qa = [`Q (as written on the card): ${cardText(p.q, QUESTION_MAX)}`, `A: ${p.a}`];
   const forMichael: AnswerMessage = {
     to: MICHAEL_ID,
     act: 'request',
